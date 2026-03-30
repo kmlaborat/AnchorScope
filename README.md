@@ -10,6 +10,8 @@ AnchorScope is a minimal reference implementation of the Scope Anchoring protoco
 
 Unlike traditional search-replace tools that rely on heuristics or fuzzy matching, AnchorScope enforces byte-level exactness, making it suitable for agent-based systems where correctness and reproducibility are paramount.
 
+See the full specification: [docs/SPEC.md](docs/SPEC.md)
+
 ---
 
 ## Core Model: READ → MATCH → HASH → WRITE
