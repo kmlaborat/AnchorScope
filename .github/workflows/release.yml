@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      # セマンティックバージョニング形式（v1.2.3など）の時だけ実行
+      # Trigger on semantic versioning tags (e.g., v1.2.3)
       - 'v[0-9]+.[0-9]+.[0-9]+*'
 
 permissions:
@@ -11,27 +11,32 @@ permissions:
 
 jobs:
   validate:
+    name: Validate Version
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.validate.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: michaelklishin/rust-build-package-release-action@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate version from tag
+        uses: michaelklishin/rust-build-package-release-action@v2
         id: validate
         with:
           command: validate-version
 
   build:
+    name: Build for ${{ matrix.target }}
     needs: validate
     strategy:
       fail-fast: false
       matrix:
         include:
-          # 1. Linux (Debian 12 / Fedora 42 両対応のmusl)
+          # 1. Linux (Static binary via musl for Debian/Fedora compatibility)
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             command: release-linux
-          # 2. macOS (Apple Silicon / M1,M2,M3)
+          # 2. macOS (Apple Silicon / M1, M2, M3)
           - target: aarch64-apple-darwin
             os: macos-latest
             command: release-macos
@@ -39,68 +44,77 @@ jobs:
           - target: x86_64-apple-darwin
             os: macos-latest
             command: release-macos
-          # 4. Windows (64bit)
+          # 4. Windows (64-bit)
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             command: release-windows
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
       
-      # Linux muslビルドの場合、zigbuildを使うと互換性が高まるため推奨
+      # Install zig for cross-compiling musl targets (highly recommended for stability)
       - name: Install zig
         if: matrix.target == 'x86_64-unknown-linux-musl'
         uses: mlugg/setup-zig@v1
 
-      - run: rustup toolchain install stable --profile minimal
-      - run: rustup target add ${{ matrix.target }}
+      - name: Setup Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add ${{ matrix.target }}
 
-      - uses: michaelklishin/rust-build-package-release-action@v2
+      # Main build step: produces optimized release binaries and archives (.tar.gz / .zip)
+      - name: Build and Package
+        uses: michaelklishin/rust-build-package-release-action@v2
         id: build
         with:
           command: ${{ matrix.command }}
           target: ${{ matrix.target }}
           locked: 'true'
           archive: 'true'
-          # muslビルド時にzigbuildを有効化（互換性向上のため）
+          # Use zigbuild for Linux musl to improve compatibility and avoid linker issues
           use-zigbuild: ${{ matrix.target == 'x86_64-unknown-linux-musl' && 'true' || 'false' }}
 
-      - name: Upload artifacts for release job
+      # Temporarily store artifacts to pass them to the release job
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
-          # アクションが生成したアーカイブを一時保存
           path: target/${{ matrix.target }}/release/*.{tar.gz,zip}
 
   release:
+    name: Finalize and Publish Release
     needs: [validate, build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
       
+      # Extract release notes from CHANGELOG.md based on the current tag
       - name: Extract Changelog
         uses: michaelklishin/rust-build-package-release-action@v2
         with:
           command: extract-changelog
           version: ${{ needs.validate.outputs.version }}
           
+      # Fetch all binaries built in the matrix jobs
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Prepare release files
+      # Organize files into a single directory for easy uploading
+      - name: Prepare release assets
         run: |
           mkdir -p release_assets
-          # 各ジョブから集めたファイルを1つのフォルダに集約
           find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release_assets/ \;
           ls -R release_assets/
 
+      # Create the official GitHub Release and attach the binaries
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # 抽出した変更履歴をリリース本文に反映
           body_path: release_notes.md
           files: release_assets/*
           name: Release v${{ needs.validate.outputs.version }}
