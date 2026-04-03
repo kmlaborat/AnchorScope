@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 // AnchorScope enforces UTF-8 only for file-based inputs explicitly.
 
 #[derive(Parser)]
-#[command(name = "anchorscope", version = "0.1.0", about = "AnchorScope MVP v0.1")]
+#[command(name = "anchorscope", version = "1.0.1", about = "AnchorScope v1.0.1")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
