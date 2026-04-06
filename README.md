@@ -4,6 +4,22 @@
 
 ---
 
+## 🚀 Quick Start / Demo
+
+See AnchorScope v1.1.0 in action with the built-in showcase:
+
+```bash
+bash examples/v1_1_0_showcase.sh
+```
+
+This script demonstrates:
+- **Auto-Labeling**: `read` automatically generates internal labels for matched regions
+- **Label Management**: Assign human-readable names via the `label` command
+- **Label-based Writing**: Use `--label` to reference anchors without repeating hashes
+- **Deterministic Safety**: Watch `HASH_MISMATCH` and `NO_MATCH` prevent unsafe edits
+
+---
+
 ## What is AnchorScope
 
 AnchorScope is a minimal reference implementation of the Scope Anchoring protocol, a deterministic code editing protocol that guarantees exact region identification and safe replacement through deterministic hash verification.
