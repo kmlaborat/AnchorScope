@@ -23,4 +23,6 @@ mod utf8_validation_tests;
 #[cfg(test)]
 mod anchor_file_tests;
 #[cfg(test)]
+mod validation_order_tests;
+#[cfg(test)]
 mod anchor_command_tests;
