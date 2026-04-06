@@ -26,3 +26,5 @@ mod anchor_file_tests;
 mod validation_order_tests;
 #[cfg(test)]
 mod label_command_tests;
+#[cfg(test)]
+mod storage_lifecycle_tests;
