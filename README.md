@@ -66,6 +66,26 @@ anchorscope write \
 
 Exit 0 on success, 1 on any error condition.
 
+### Anchor: Define Labeled Region
+
+```bash
+anchorscope anchor \
+  --file <path> \
+  --label <name> \
+  --anchor "<string>" \
+  --expected-hash <hex>
+# or
+anchorscope anchor \
+  --file <path> \
+  --label <name> \
+  --anchor-file <path> \
+  --expected-hash <hex>
+```
+
+Stores a mapping from label to file, anchor, and hash in `~/.anchorscope/labels/<label>.json` for later reference.
+
+Exit 0 on success, 1 on any error.
+
 ---
 
 ## Anchor Strategies
