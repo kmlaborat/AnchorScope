@@ -8,7 +8,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-DEMO_FILE="$SCRIPT_DIR/demo_target.rs"
+DEMO_FILE="$SCRIPT_DIR/demo_target.txt"
 WORK_FILE="$SCRIPT_DIR/demo_target_work.rs"
 
 # ANSI colors for pretty output

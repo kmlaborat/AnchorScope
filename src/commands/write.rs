@@ -9,8 +9,8 @@ pub fn execute(
     label: Option<&str>,
     replacement: &str,
 ) -> i32 {
-    // Resolve file, anchor_bytes, and expected_hash from either label or direct args
-    let (target_file, anchor_bytes, expected_hash) = if let Some(label_name) = label {
+    // Resolve file, anchor_bytes, expected_hash, and track label for cleanup
+    let (target_file, anchor_bytes, expected_hash, used_label): (String, Vec<u8>, String, Option<String>) = if let Some(label_name) = label {
         // Label mode: resolve internal label -> anchor metadata
         let internal_label = match crate::storage::load_label_target(label_name) {
             Ok(l) => l,
@@ -26,8 +26,7 @@ pub fn execute(
                 return 1;
             }
         };
-        // anchor and expected_hash come from metadata, file path from metadata
-        (meta.file, meta.anchor.into_bytes(), meta.hash)
+        (meta.file, meta.anchor.into_bytes(), meta.hash, Some(label_name.to_string()))
     } else {
         // Direct mode: use provided args (must have anchor and expected_hash)
         let anchor_bytes = match crate::load_anchor(anchor, anchor_file) {
@@ -38,13 +37,13 @@ pub fn execute(
             }
         };
         let expected_hash = match expected_hash {
-            Some(h) => h,
+            Some(h) => h.to_string(),
             None => {
                 eprintln!("ERROR: expected-hash required when not using label");
                 return 1;
             }
         };
-        (file_path.to_string(), anchor_bytes, expected_hash.to_string())
+        (file_path.to_string(), anchor_bytes, expected_hash, None)
     };
 
     let raw = match fs::read(&target_file) {
@@ -95,6 +94,11 @@ pub fn execute(
 
     match fs::write(&target_file, &result) {
         Ok(_) => {
+            // Clean up ephemeral files after successful write (SPEC §3.3)
+            if let Some(ref lname) = used_label {
+                crate::storage::invalidate_label(lname);
+            }
+            crate::storage::invalidate_anchor(&expected_hash);
             println!("OK: written {} bytes", result.len());
             0
         }
