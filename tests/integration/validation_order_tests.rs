@@ -5,7 +5,7 @@ use tempfile::TempDir;
 fn test_validation_precedes_normalization_in_read() {
     // Create file with invalid UTF-8 sequence
     let invalid_utf8 = vec![0x48, 0x69, 0x80, 0x21]; // "Hi" + invalid byte + "!"
-    let (temp_dir, file_path) = {
+    let (_temp_dir, file_path) = {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("bad_utf8.txt");
         std::fs::write(&path, &invalid_utf8).unwrap();

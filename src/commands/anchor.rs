@@ -71,10 +71,39 @@ pub fn execute(
     }
 
     let label_file = label_dir.join(format!("{}.json", label));
-    let anchor_str = String::from_utf8_lossy(&anchor_bytes).to_string();
+    
+    // Check for label collision: if label exists and points to different anchor/hash, reject
+    if label_file.exists() {
+        let existing_content = match std::fs::read_to_string(&label_file) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("IO_ERROR: cannot read existing label file: {}", e);
+                return 1;
+            }
+        };
+        let existing: serde_json::Value = match serde_json::from_str(&existing_content) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("IO_ERROR: existing label file is corrupted: {}", e);
+                return 1;
+            }
+        };
+        let existing_hash = existing.get("hash").and_then(|h| h.as_str()).unwrap_or(""); 
+        let existing_anchor = existing.get("anchor").and_then(|a| a.as_str()).unwrap_or("");
+        let anchor_str = String::from_utf8_lossy(&anchor_bytes);
+        
+        // If the existing label points to the same anchor and hash, allow overwrite (idempotent)
+        if existing_hash != actual_hash || existing_anchor != anchor_str {
+            eprintln!("LABEL_EXISTS: label '{}' already defined for a different anchor or hash", label);
+            return 1;
+        }
+        // If same content, fall through to rewrite (which will overwrite identical content)
+    }
+
+    let anchor_str_final = String::from_utf8_lossy(&anchor_bytes).to_string();
     let record = serde_json::json!({
         "file": file_path,
-        "anchor": anchor_str,
+        "anchor": anchor_str_final,
         "hash": actual_hash,
         "line_range": [m.start_line, m.end_line],
     });
