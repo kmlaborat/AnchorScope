@@ -1,4 +1,4 @@
-# AnchorScope Specification v1.0.1
+# AnchorScope Specification v1.1.0
 
 ## Deterministic Scoped Editing Protocol
 
@@ -6,6 +6,8 @@
 It treats code as **immutable UTF-8 byte sequences**, not as text or syntax.
 
 All operations are strictly **byte-level, deterministic, and single-location**.
+
+AnchorScope v1.1.0 focuses on **atomic operations** (`read` / `write` / `anchor`) and sets the foundation for future snapshot and pipeline management.
 
 ---
 
@@ -29,11 +31,11 @@ This enables edits that are:
 
 ### 1.3 Layered Model
 
-| Layer              | Name            | Role                                     |
-| :----------------- | :-------------- | :--------------------------------------- |
-| **Concept**        | Scoped Editing  | Philosophy of local, verifiable mutation |
-| **Protocol**       | Scope Anchoring | Deterministic matching & hashing rules   |
-| **Implementation** | AnchorScope     | Reference CLI (`read` / `write`)         |
+| Layer              | Name            | Role                                        |
+| :----------------- | :-------------- | :------------------------------------------ |
+| **Concept**        | Scoped Editing  | Philosophy of local, verifiable mutation    |
+| **Protocol**       | Scope Anchoring | Deterministic matching & hashing rules      |
+| **Implementation** | AnchorScope     | Reference CLI (`read` / `write` / `anchor`) |
 
 ---
 
@@ -48,14 +50,15 @@ The following invariants **MUST** hold:
 3. Exactly one match **MUST** exist to proceed.
 4. All operations **MUST** be deterministic.
 5. No implicit interpretation (syntax, encoding heuristics) is allowed.
+6. Parent-child or multi-layer anchors **MUST NOT** be relied upon for atomic edits.
+
+   * Instead, perform edits recursively on **replacement copies in memory**.
 
 ---
 
-### 2.2 Encoding & Validation (CRITICAL)
+### 2.2 Encoding & Validation
 
 All inputs **MUST** be valid UTF-8.
-
-#### Validation Scope
 
 * File content **MUST** be validated immediately after reading.
 * `--anchor-file` content **MUST** be validated.
@@ -69,23 +72,13 @@ If invalid UTF-8 is detected:
 IO_ERROR: invalid UTF-8
 ```
 
-#### Constraints
-
-* No partial decoding
-* No lossy conversion
-* Validation **MUST occur before normalization**
-
 ---
 
 ### 2.3 Normalization
 
-#### Rule
-
 ```
 CRLF (\r\n) → LF (\n)
 ```
-
-#### Application
 
 Normalization **MUST** be applied:
 
@@ -93,21 +86,7 @@ Normalization **MUST** be applied:
 * Before hashing
 * Before writing
 
-#### Symmetry
-
-Normalization applies identically to:
-
-* File content
-* Anchor
-* Replacement
-
-#### Constraint
-
-No other transformations are allowed:
-
-* ❌ Trimming
-* ❌ Unicode normalization
-* ❌ Whitespace changes
+No other transformations are allowed (trimming, Unicode normalization, whitespace changes).
 
 ---
 
@@ -116,7 +95,7 @@ No other transformations are allowed:
 Two byte sequences are equal **if and only if**:
 
 1. Both are valid UTF-8
-2. Both are normalized using the same rule
+2. Both are normalized
 3. Their byte sequences are identical
 
 No other notion of equality is permitted.
@@ -125,38 +104,10 @@ No other notion of equality is permitted.
 
 ### 2.5 Matching & Identification
 
-#### Search Procedure
-
-* Evaluate **every possible starting byte position**
-* Increment by exactly **1 byte**
+* Evaluate **every possible starting byte position** (increment by 1 byte)
 * Perform exact byte comparison
-
-#### Constraints
-
-* Regex **MUST NOT** be used
-* Fuzzy matching **MUST NOT** be used
-* Heuristics **MUST NOT** be used
-
-#### Implementation Note
-
-Implementations **MAY** use optimized algorithms (e.g., KMP),
-provided that the result is identical to a full byte-by-byte scan.
-
-#### Overlapping Matches
-
-Overlapping matches **MUST** be detected and counted.
-
-#### Empty Anchor
-
-An empty anchor is considered invalid.
-
-For simplicity and determinism, it **MUST** be treated as:
-
-```
-NO_MATCH
-```
-
-This avoids introducing a separate error class and keeps matching semantics uniform.
+* Regex, fuzzy matching, heuristics **MUST NOT** be used
+* Empty anchors are invalid and treated as `NO_MATCH`
 
 #### Outcomes
 
@@ -170,30 +121,14 @@ This avoids introducing a separate error class and keeps matching semantics unif
 
 ### 2.6 Hashing
 
-#### Algorithm
-
-```
-xxh3_64
-```
-
-#### Input
-
-* Normalized matched byte region
-
-#### Output
-
-* Lowercase 16-character hex string
-
-#### Execution
-
-* Performed **only if exactly one match exists**
-* Performed **before any write**
+* Algorithm: `xxh3_64`
+* Input: normalized matched byte region
+* Output: lowercase 16-character hex string
+* Executed only if exactly one match exists, **before write**
 
 ---
 
 ### 2.7 Line Numbering
-
-Line numbers **MUST** be:
 
 * 1-based
 * Based on normalized content (LF only)
@@ -205,38 +140,30 @@ Line numbers **MUST** be:
 
 ### 3.1 Processing Pipeline
 
-All operations **MUST** execute the following pipeline:
-
 ```
 READ → VALIDATE → NORMALIZE → MATCH → HASH
 ```
 
-At each stage:
-
-* If the stage fails, the process **MUST terminate immediately** with a defined error.
+* Any stage failure **MUST terminate immediately**.
 * No stage may be skipped or reordered.
 
----
-
 ### 3.2 Write Phase
-
-If and only if all prior stages succeed, the `write` command proceeds:
 
 ```
 HASH_VERIFIED → WRITE → COMPLETE
 ```
 
-* The current file state **MUST** be hashed and compared with `expected_hash`
-* If the hash does not match:
+* Compare current file hash with `expected_hash`.
+* If mismatch:
 
 ```
 HASH_MISMATCH
 ```
 
-* The WRITE step **MUST**:
+* WRITE **MUST**:
 
-  * replace only the matched region
-  * either succeed or terminate with:
+  * Replace only the matched region
+  * Succeed or terminate with:
 
 ```
 IO_ERROR: write failure
@@ -244,81 +171,48 @@ IO_ERROR: write failure
 
 ---
 
+### 3.3 In-Memory Replacement (New v1.1.0)
+
+* `read` can create **replacement copies in memory**.
+* Recursive edits are allowed **only on in-memory copies**, not directly on the original file.
+* Final `write` applies all in-memory changes **atomically** to the file.
+* After successful write, related in-memory copies **MUST** be invalidated.
+* Temporary in-memory copies may be cached for debugging or retry, but **do not alter file state** until atomic write.
+
+---
+
 ## 4. Implementation: AnchorScope CLI (Normative)
 
-### 4.1 Overview
+### 4.1 Commands
 
-The reference implementation exposes:
-
-* `read`
-* `write`
-
-Both commands **MUST** follow the protocol strictly.
+* `read` – extract anchor content
+* `write` – apply replacement atomically
+* `anchor` – define unique labeled region
 
 ---
 
 ### 4.2 Read Contract
 
-The `read` command **MUST**:
+* Execute pipeline to HASH
+* Return:
 
-1. Execute the pipeline up to HASH
-2. Return:
-
-   * Line range (1-based, inclusive)
-   * Hash
-   * Matched content (normalized UTF-8)
-3. NOT modify the file
-
-The returned content **MUST exactly correspond** to the hashed byte region.
+  * Line range
+  * Hash
+  * Matched content (normalized UTF-8)
+* **Does not modify file**
+* Supports creation of **in-memory replacement copies** for recursive edits
 
 ---
 
 ### 4.3 Write Contract
 
-The `write` command **MUST**:
-
-1. Compute the hash from current file state
-2. Compare with `expected_hash`
-3. Perform replacement **only if equal**
-4. Otherwise return:
-
-```
-HASH_MISMATCH
-```
+* Verify hash against `expected_hash`
+* Replace matched region **only if verified**
+* On success, invalidate all related in-memory copies
 
 ---
 
-### 4.4 Write Semantics
-
-* Only the matched byte range is replaced
-* Prefix and suffix **MUST remain unchanged**
-* Output file **MUST be normalized (LF only)**
-
----
-
-### 4.5 Typical Workflow (Informative)
-
-A typical usage flow is:
-
-1. Execute `read` to obtain:
-
-   * line range
-   * hash
-   * content
-2. Modify the content externally
-3. Execute `write` with:
-
-   * original anchor
-   * replacement
-   * `expected_hash` from step 1
-
-The write operation will only succeed if the file state has not changed.
-
----
-
-### 4.6 Deterministic Error Handling
-
-Implementations **MUST NOT** expose raw OS errors.
+### 4.4 Deterministic Error Handling
 
 Allowed outputs:
 
@@ -337,48 +231,37 @@ IO_ERROR: write failure
 
 ## 5. Non-Goals
 
-The following are explicitly out of scope:
-
 * Multi-file operations
 * Automatic anchor generation
 * AST parsing or language awareness
 * Regex or fuzzy matching
 * Encoding detection or conversion
-* Any modification outside the matched region
+* Any modification outside matched region
+* Multi-layer parent/child anchors for a single file
 
 ---
 
 ## 6. Guarantees
 
-This protocol guarantees that:
-
-1. Every edit targets exactly one uniquely identified region.
-2. No edit is applied if the file state has changed.
-3. All operations are deterministic and reproducible.
-4. Equality is strictly defined at the byte level.
-5. No implicit interpretation is performed.
-6. The system is fail-fast by design.
-7. Zero modification occurs outside the matched region.
-8. Normalization is consistent and persistent.
-9. Invalid input states are always fatal, including:
-
-   * invalid UTF-8
-   * empty anchor
-   * multiple matches
+* Every edit targets exactly one uniquely identified region
+* No edit applied if file state changed
+* All operations deterministic and reproducible
+* Strict byte-level equality
+* Fail-fast design
+* Zero modification outside matched region
+* Normalization consistent
+* Recursive in-memory edits allowed, but only **one atomic write per file**
 
 ---
 
 ## 7. Summary
 
-AnchorScope defines a **minimal, strict, and deterministic editing protocol**.
+AnchorScope v1.1.0 defines **atomic, deterministic file editing** with:
 
-By eliminating ambiguity and interpretation, it enables:
-
-* Reliable LLM-driven code modification
-* Safe automated refactoring
-* Reproducible editing pipelines
-
-The protocol prioritizes:
+* Safe and precise byte-level edits
+* Hash-verified consistency
+* Support for in-memory recursive preparation of replacements
+* Foundation for snapshots and pipelines in future versions
 
 > **Correctness over convenience
 > Synchronization over intelligence
