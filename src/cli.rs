@@ -51,4 +51,27 @@ pub enum Command {
         #[arg(long)]
         replacement: String,
     },
+
+    /// Define a unique labeled region by storing anchor + hash.
+    Anchor {
+        /// Path to the target file.
+        #[arg(long)]
+        file: String,
+
+        /// Label/name for this anchor (unique identifier).
+        #[arg(long)]
+        label: String,
+
+        /// Anchor string.
+        #[arg(long)]
+        anchor: Option<String>,
+
+        /// Path to file containing anchor.
+        #[arg(long)]
+        anchor_file: Option<String>,
+
+        /// Expected xxh3 hash (hex) of the matched region.
+        #[arg(long)]
+        expected_hash: String,
+    },
 }

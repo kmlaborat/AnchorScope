@@ -22,3 +22,5 @@ mod forbidden_operations_tests;
 mod utf8_validation_tests;
 #[cfg(test)]
 mod anchor_file_tests;
+#[cfg(test)]
+mod anchor_command_tests;
