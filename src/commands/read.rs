@@ -1,4 +1,5 @@
 use std::fs;
+use crate::storage;
 
 /// Read: locate anchor, print location + hash. Exit 0 on success, 1 on error.
 pub fn execute(
@@ -42,6 +43,19 @@ pub fn execute(
             println!("end_line={}", m.end_line);
             println!("hash={}", h);
             println!("content={}", String::from_utf8_lossy(region));
+            // Save anchor metadata and output internal label
+            let anchor_str = String::from_utf8_lossy(&anchor_bytes).to_string();
+            let meta = storage::AnchorMeta {
+                file: file_path.to_string(),
+                anchor: anchor_str,
+                hash: h.clone(),
+                line_range: (m.start_line, m.end_line),
+            };
+            if let Err(e) = storage::save_anchor_metadata(&meta) {
+                eprintln!("IO_ERROR: cannot save anchor metadata: {}", e);
+                return 1;
+            }
+            println!("label={}", h);
             0
         }
     }

@@ -44,6 +44,10 @@ fn read_single_line_anchor_found() {
     // Verify content matches the anchor (normalized)
     let content_value = result.get("content").expect("content should be present");
     assert_eq!(content_value, anchor);
+
+    // Verify label is present and equals hash
+    let label = result.get("label").expect("label should be present");
+    assert_eq!(label, hash);
 }
 
 #[test]
@@ -89,6 +93,10 @@ fn read_multiline_anchor_found() {
     // Verify content matches the anchor (normalized)
     let content_value = result.get("content").expect("content should be present");
     assert_eq!(content_value, anchor);
+
+    // Verify label is present and equals hash
+    let label = result.get("label").expect("label should be present");
+    assert_eq!(label, hash);
 }
 
 #[test]
@@ -121,4 +129,9 @@ fn read_substring_match_without_boundaries() {
     assert_eq!(result.get("start_line"), Some(&"1".to_string()));
     assert_eq!(result.get("end_line"), Some(&"1".to_string()));
     assert_eq!(result.get("content"), Some(&"ABC".to_string()));
+
+    // Verify hash and label
+    let hash = result.get("hash").expect("hash should be present");
+    let label = result.get("label").expect("label should be present");
+    assert_eq!(label, hash);
 }

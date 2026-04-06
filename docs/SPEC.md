@@ -1,4 +1,4 @@
-# AnchorScope Specification v1.1.0
+# AnchorScope Specification v1.1.0 (Updated)
 
 ## Deterministic Scoped Editing Protocol
 
@@ -7,7 +7,7 @@ It treats code as **immutable UTF-8 byte sequences**, not as text or syntax.
 
 All operations are strictly **byte-level, deterministic, and single-location**.
 
-AnchorScope v1.1.0 focuses on **atomic operations** (`read` / `write` / `anchor`) and sets the foundation for future snapshot and pipeline management.
+AnchorScope v1.1.0 focuses on **atomic operations** (`read` / `write` / `label`) and sets the foundation for future snapshot and pipeline management.
 
 ---
 
@@ -18,10 +18,13 @@ AnchorScope v1.1.0 focuses on **atomic operations** (`read` / `write` / `anchor`
 Full-file rewrites are high-risk, and diff-based patching is fragile.
 Even minor contextual changes can invalidate patches.
 
-### 1.2 Solution: Anchor and Scope
+### 1.2 Solution: Automatic Label Anchors
 
-AnchorScope defines a precise **editing scope** using an exact byte sequence ("Anchor"),
-combined with **hash-based state verification**.
+AnchorScope defines a precise **editing scope** using an exact byte sequence ("anchor"), combined with **hash-based state verification**.
+
+* Every `read` operation automatically generates an internal **label (anchor ID)** for the matched region.
+* This internal label allows **subsequent atomic edits** without ambiguity.
+* Users can optionally assign a **human-readable name** to this internal label using the `label` command.
 
 This enables edits that are:
 
@@ -31,11 +34,11 @@ This enables edits that are:
 
 ### 1.3 Layered Model
 
-| Layer              | Name            | Role                                        |
-| :----------------- | :-------------- | :------------------------------------------ |
-| **Concept**        | Scoped Editing  | Philosophy of local, verifiable mutation    |
-| **Protocol**       | Scope Anchoring | Deterministic matching & hashing rules      |
-| **Implementation** | AnchorScope     | Reference CLI (`read` / `write` / `anchor`) |
+| Layer              | Name            | Role                                       |
+| :----------------- | :-------------- | :----------------------------------------- |
+| **Concept**        | Scoped Editing  | Philosophy of local, verifiable mutation   |
+| **Protocol**       | Scope Anchoring | Deterministic matching & hashing rules     |
+| **Implementation** | AnchorScope     | Reference CLI (`read` / `write` / `label`) |
 
 ---
 
@@ -61,8 +64,8 @@ The following invariants **MUST** hold:
 All inputs **MUST** be valid UTF-8.
 
 * File content **MUST** be validated immediately after reading.
-* `--anchor-file` content **MUST** be validated.
-* Inline arguments (`--anchor`, `--replacement`) are assumed valid.
+* `--label-file` content **MUST** be validated.
+* Inline arguments (`--label`, `--replacement`) are assumed valid.
 
 #### Error
 
@@ -141,11 +144,14 @@ No other notion of equality is permitted.
 ### 3.1 Processing Pipeline
 
 ```
-READ → VALIDATE → NORMALIZE → MATCH → HASH
+READ → VALIDATE → NORMALIZE → MATCH → HASH → AUTO-LABEL
 ```
 
 * Any stage failure **MUST terminate immediately**.
 * No stage may be skipped or reordered.
+
+- Every `read` automatically generates an internal **label (anchor ID)** for later reference.
+- Users may optionally assign a **human-readable label** using the `label` command.
 
 ### 3.2 Write Phase
 
@@ -185,26 +191,38 @@ IO_ERROR: write failure
 
 ### 4.1 Commands
 
-* `read` – extract anchor content
+* `read` – extract anchor content and auto-generate internal label
 * `write` – apply replacement atomically
-* `anchor` – define unique labeled region
+* `label` – assign a human-readable name to an internal label
 
 ---
 
 ### 4.2 Read Contract
 
-* Execute pipeline to HASH
+* Execute pipeline to HASH and AUTO-LABEL
+
 * Return:
 
   * Line range
   * Hash
   * Matched content (normalized UTF-8)
+  * Auto-generated internal label
+
 * **Does not modify file**
+
 * Supports creation of **in-memory replacement copies** for recursive edits
 
 ---
 
-### 4.3 Write Contract
+### 4.3 Label Command Contract
+
+* Map an internal label to a user-defined, human-readable name
+* Optional: multiple labels may point to the same internal anchor
+* Enables subsequent `write` or `read` using human-readable label
+
+---
+
+### 4.4 Write Contract
 
 * Verify hash against `expected_hash`
 * Replace matched region **only if verified**
@@ -212,7 +230,7 @@ IO_ERROR: write failure
 
 ---
 
-### 4.4 Deterministic Error Handling
+### 4.5 Deterministic Error Handling
 
 Allowed outputs:
 
@@ -232,12 +250,13 @@ IO_ERROR: write failure
 ## 5. Non-Goals
 
 * Multi-file operations
-* Automatic anchor generation
 * AST parsing or language awareness
 * Regex or fuzzy matching
 * Encoding detection or conversion
 * Any modification outside matched region
 * Multi-layer parent/child anchors for a single file
+
+> **Automatic anchor generation** is now part of `read` (auto-label), so `anchor` command is replaced by `label` for explicit naming.
 
 ---
 
@@ -251,6 +270,7 @@ IO_ERROR: write failure
 * Zero modification outside matched region
 * Normalization consistent
 * Recursive in-memory edits allowed, but only **one atomic write per file**
+* `read` auto-generates internal label; `label` command is optional for human-readable naming
 
 ---
 
@@ -260,6 +280,8 @@ AnchorScope v1.1.0 defines **atomic, deterministic file editing** with:
 
 * Safe and precise byte-level edits
 * Hash-verified consistency
+* Auto-labeled anchors upon `read`
+* Optional human-readable labels via `label` command
 * Support for in-memory recursive preparation of replacements
 * Foundation for snapshots and pipelines in future versions
 

@@ -2,6 +2,7 @@ mod cli;
 mod commands;
 mod hash;
 mod matcher;
+mod storage;
 
 use clap::Parser;
 use cli::{Cli, Command};
@@ -46,21 +47,20 @@ fn main() {
             anchor,
             anchor_file,
             expected_hash,
+            label,
             replacement,
         } => commands::write::execute(
             &file,
             anchor.as_deref(),
             anchor_file.as_deref(),
-            &expected_hash,
+            expected_hash.as_deref(),
+            label.as_deref(),
             &replacement,
         ),
-        Command::Anchor {
-            file,
-            label,
-            anchor,
-            anchor_file,
-            expected_hash,
-        } => commands::anchor::execute(&file, &label, anchor.as_deref(), anchor_file.as_deref(), &expected_hash),
+        Command::Label {
+            name,
+            internal_label,
+        } => commands::label::execute(&name, &internal_label),
     };
 
     process::exit(exit_code);

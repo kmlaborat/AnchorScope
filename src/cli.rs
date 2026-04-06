@@ -36,42 +36,34 @@ pub enum Command {
         file: String,
 
         /// Anchor string — must match exactly.
-        #[arg(long)]
+        #[arg(long, conflicts_with_all = ["label"])]
         anchor: Option<String>,
 
         /// Path to a file containing the anchor string.
-        #[arg(long)]
+        #[arg(long, conflicts_with_all = ["label"])]
         anchor_file: Option<String>,
 
         /// Expected xxh3 hash (hex) of the matched region.
-        #[arg(long)]
-        expected_hash: String,
+        #[arg(long, conflicts_with = "label")]
+        expected_hash: Option<String>,
+
+        /// Use a human-readable label to identify the anchor.
+        #[arg(long, conflicts_with_all = ["anchor", "anchor_file", "expected_hash"])]
+        label: Option<String>,
 
         /// Replacement string (replaces the entire anchor region).
         #[arg(long)]
         replacement: String,
     },
 
-    /// Define a unique labeled region by storing anchor + hash.
-    Anchor {
-        /// Path to the target file.
+    /// Assign a human-readable name to an internal label.
+    Label {
+        /// Human-readable name.
         #[arg(long)]
-        file: String,
+        name: String,
 
-        /// Label/name for this anchor (unique identifier).
+        /// Internal label (hash from read output).
         #[arg(long)]
-        label: String,
-
-        /// Anchor string.
-        #[arg(long)]
-        anchor: Option<String>,
-
-        /// Path to file containing anchor.
-        #[arg(long)]
-        anchor_file: Option<String>,
-
-        /// Expected xxh3 hash (hex) of the matched region.
-        #[arg(long)]
-        expected_hash: String,
+        internal_label: String,
     },
 }

@@ -176,3 +176,35 @@ fn write_normalizes_replacement_to_lf() {
     let expected_content = "Line 1\nNEW\nCONTENT\nLine 2\n";
     assert_eq!(final_content, expected_content);
 }
+
+#[test]
+fn write_using_label() {
+    // Full workflow: read -> label -> write
+    let content = "fn main() { println!(\"old\"); }";
+    let (_temp_dir, file_path) = create_temp_file(content);
+    let anchor = "old";
+
+    // 1. read to get the internal label (auto-generated)
+    let out_read = run_anchorscope(&[
+        "read", "--file", file_path.to_str().unwrap(), "--anchor", anchor
+    ]);
+    assert!(out_read.status.success(), "read failed: {}", String::from_utf8_lossy(&out_read.stderr));
+    let res = parse_output(&String::from_utf8_lossy(&out_read.stdout));
+    let internal_label = res.get("label").unwrap().clone();
+
+    // 2. create human-readable label
+    let out_label = run_anchorscope(&[
+        "label", "--name", "my_anchor", "--internal-label", &internal_label
+    ]);
+    assert!(out_label.status.success(), "label failed: {}", String::from_utf8_lossy(&out_label.stderr));
+
+    // 3. write using label
+    let out_write = run_anchorscope(&[
+        "write", "--label", "my_anchor", "--replacement", "new", "--file", file_path.to_str().unwrap()
+    ]);
+    assert!(out_write.status.success(), "write via label failed: {}", String::from_utf8_lossy(&out_write.stderr));
+
+    // 4. verify file changed
+    let final_content = read_file(&file_path);
+    assert!(final_content.contains("println!(\"new\");"));
+}
