@@ -1,0 +1,12 @@
+# Build target
+target/
+# Rust analyzer
+rust-analyzer/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Windows reserved name artifact
+nul
