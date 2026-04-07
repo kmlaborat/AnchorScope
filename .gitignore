@@ -10,3 +10,6 @@ desktop.ini
 
 # Windows reserved name artifact
 nul
+
+# Archive / reference specs (not part of release)
+docs/archive/
