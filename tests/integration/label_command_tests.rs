@@ -38,7 +38,7 @@ fn test_label_unknown_internal() {
     ]);
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("IO_ERROR: file not found"));
+    assert!(stderr.contains("IO_ERROR: anchor metadata for hash"));
 }
 
 #[test]

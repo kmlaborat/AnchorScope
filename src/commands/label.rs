@@ -25,9 +25,8 @@ pub fn execute(name: &str, internal_label: &str) -> i32 {
         Ok(_) => {
             // Anchor metadata found — proceed to create the human-readable mapping
         }
-        Err(ref msg) if msg.starts_with("IO_ERROR: anchor metadata not found") => {
-            let actual_hash = internal_label;
-            eprintln!("IO_ERROR: anchor metadata for hash '{}' not found. Run 'read' first.", actual_hash);
+        Err(ref msg) if msg.starts_with("IO_ERROR: file not found") => {
+            eprintln!("IO_ERROR: anchor metadata for hash '{}' not found. Run 'read' first.", internal_label);
             return 1;
         }
         Err(ref msg) if msg.starts_with("IO_ERROR:") => {
