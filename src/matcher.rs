@@ -88,3 +88,109 @@ pub fn resolve(haystack: &[u8], anchor: &[u8]) -> Result<Match, MatchError> {
         n => Err(MatchError::MultipleMatches(n)),
     }
 }
+
+/// Extract function body starting from function definition line.
+/// Returns the byte range of the function body (including the function definition line).
+/// This is used for nested anchors to limit search scope to the function.
+pub fn extract_function_body(content: &[u8], start_line: usize) -> Option<std::ops::Range<usize>> {
+    // Check if it's a function definition
+    let normalized = normalize_line_endings(content);
+    let lines: Vec<&[u8]> = normalized.split(|b| *b == b'\n').collect();
+    
+    if start_line == 0 || start_line > lines.len() {
+        return None;
+    }
+    
+    // Get the function definition line (0-indexed: start_line - 1)
+    let func_def_line = lines.get(start_line - 1)?;
+    
+    // Only extract if it's a function definition
+    let func_def_str = String::from_utf8_lossy(func_def_line);
+    if !func_def_str.trim().starts_with("def ") {
+        return None;
+    }
+    
+    // Calculate the indentation level of the function definition
+    let func_indent = count_leading_spaces(func_def_line);
+    
+    // Find the end of the function by looking for lines with < indentation
+    let func_start_byte: usize = lines[..start_line - 1].iter().map(|l| l.len() + 1).sum();
+    
+    // Start from the next line after function definition
+    let mut func_end_byte = func_start_byte;
+    for i in start_line..lines.len() {
+        let line = lines.get(i)?;
+        let line_indent = count_leading_spaces(line);
+        
+        // If line is empty, always include it (it's part of the function body)
+        // If line has < function indentation (and is not empty), function ended
+        if line.is_empty() {
+            // Empty line, include it
+        } else if line_indent < func_indent {
+            // Non-empty line with less indentation, function ended
+            break;
+        }
+        
+        func_end_byte += line.len() + 1;
+    }
+    
+    // Clamp the range to the actual content length
+    let content_len = content.len();
+    let end = func_end_byte.min(content_len);
+    
+    eprintln!("DEBUG extract: func_start_byte={}, end={}, content_len={}, normalized_len={}", func_start_byte, end, content_len, normalized.len());
+    
+    if func_start_byte < end {
+        Some(func_start_byte..end)
+    } else {
+        None
+    }
+}
+
+/// Count leading spaces in a line
+fn count_leading_spaces(line: &[u8]) -> usize {
+    line.iter().take_while(|&&b| b == b' ' || b == b'\t').count()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_function_body_simple() {
+        let content = b"# Comment\n\ndef process_data():\n    for i in range(10):\n        print(i)\n    print(\"Done\")\n\ndef other():\n    pass\n";
+        
+        // Function starts at line 3 (1-indexed)
+        let result = extract_function_body(content, 3);
+        assert!(result.is_some(), "Should extract function body");
+        
+        let range = result.unwrap();
+        let func_body = &content[range.clone()];
+        let func_str = String::from_utf8_lossy(func_body);
+        
+        // Should include function definition and loop
+        assert!(func_str.contains("def process_data()"), "Should contain function definition");
+        assert!(func_str.contains("for i in range(10)"), "Should contain loop");
+        assert!(func_str.contains("print(i)"), "Should contain print statement");
+        assert!(func_str.contains("print(\"Done\")"), "Should contain final print");
+        
+        // Should NOT include the next function
+        eprintln!("Extracted function body:\n{}", func_str);
+        assert!(!func_str.contains("def other()"), "Should not contain next function");
+    }
+
+    #[test]
+    fn test_extract_function_body_no_extraction_for_non_function() {
+        let content = b"x = 1\nfor i in range(10):\n    print(i)\n";
+        
+        let result = extract_function_body(content, 2);
+        assert!(result.is_none(), "Should return None for non-function anchor");
+    }
+
+    #[test]
+    fn test_count_leading_spaces() {
+        assert_eq!(count_leading_spaces(b"    indented"), 4);
+        assert_eq!(count_leading_spaces(b"\tindented"), 1);
+        assert_eq!(count_leading_spaces(b"no indent"), 0);
+    }
+}

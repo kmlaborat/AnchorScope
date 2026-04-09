@@ -1,6 +1,7 @@
 use std::fs;
 use crate::storage;
 use crate::buffer_path;
+use crate::matcher;
 
 /// Read: locate anchor, print location + hash. Exit 0 on success, 1 on error.
 /// If target is a buffer copy (file_hash/content or file_hash/true_id/content),
@@ -90,7 +91,8 @@ pub fn execute(
         return 1;
     }
 
-    let normalized = if label.is_some() {
+    let is_label_mode = label.is_some();
+    let normalized = if is_label_mode {
         // For label mode, use buffer content for matching
         let content = if let Some((ref buffer_content, _)) = buffer_parent_true_id {
             buffer_content.clone()
@@ -146,7 +148,24 @@ pub fn execute(
             
             // Save buffer content per SPEC §4.3
             // Save normalized file content to {file_hash}/content
-            if let Err(e) = storage::save_file_content(&file_hash, &normalized) {
+            // For function anchors, save only the function body for nested anchor support
+            let buffer_to_save = if !is_label_mode {
+                // Direct mode - extract function body if it's a function definition
+                if String::from_utf8_lossy(region).starts_with("def ") {
+                    if let Some(func_range) = matcher::extract_function_body(&normalized, m.start_line) {
+                        normalized[func_range].to_vec()
+                    } else {
+                        normalized.clone()
+                    }
+                } else {
+                    normalized.clone()
+                }
+            } else {
+                // Label mode - use file content from the parent buffer
+                normalized.clone()
+            };
+            
+            if let Err(e) = storage::save_file_content(&file_hash, &buffer_to_save) {
                 eprintln!("IO_ERROR: cannot save file content: {}", e);
                 return 1;
             }
@@ -169,6 +188,17 @@ pub fn execute(
                     eprintln!("IO_ERROR: cannot save nested buffer content: {}", e);
                     return 1;
                 }
+            }
+            
+            // Save buffer metadata for v1.2.0 compatibility
+            let buffer_meta = storage::BufferMeta {
+                true_id: true_id.clone(),
+                parent_true_id: parent_true_id.clone(),
+                region_hash: h.clone(),
+            };
+            if let Err(e) = storage::save_buffer_metadata(&file_hash, &true_id, &buffer_meta) {
+                eprintln!("IO_ERROR: cannot save buffer metadata: {}", e);
+                return 1;
             }
             
             // For v1.2.0: output both label (v1.1.0 compat) and true_id

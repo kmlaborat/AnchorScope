@@ -7,17 +7,9 @@ def process_data():
     print("Data processing complete")
 
 
-def process_logs():
-    """Process log entries and store them."""
-    for i in range(10):
-        print(f"Logging {i}")
-    print("Log processing complete")
-
-
 def main():
     """Main entry point."""
     process_data()
-    process_logs()
 
 
 if __name__ == "__main__":

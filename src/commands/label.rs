@@ -31,13 +31,10 @@ pub fn execute(name: &str, true_id: &str) -> i32 {
                 let file_hash_dir = e.path();
                 let true_id_dir = file_hash_dir.join(true_id);
                 let content_path = true_id_dir.join("content");
-                eprintln!("DEBUG label: checking {}", content_path.display());
                 content_path.exists()
             });
-        eprintln!("DEBUG label: found={}", found);
         found
     } else {
-        eprintln!("DEBUG label: cannot read temp_dir");
         false
     };
     

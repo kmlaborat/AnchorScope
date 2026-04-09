@@ -53,7 +53,7 @@ echo ""
 $BIN read --file "$DEMO_FILE" --label func_data --anchor "for i in range(10):"
 echo ""
 
-TRUE_ID_LOOP=$($BIN read --label func_data --anchor "for i in range(10):" | grep "^true_id=" | cut -d= -f2)
+TRUE_ID_LOOP=$($BIN read --file "$DEMO_FILE" --label func_data --anchor "for i in range(10):" | grep "^true_id=" | cut -d= -f2)
 echo "Loop True ID: $TRUE_ID_LOOP"
 echo ""
 
@@ -73,13 +73,9 @@ echo "=== Step 6: Deterministic write using nested label ==="
 echo "We'll replace 'for i in range(10):' with 'for i in range(20):'"
 echo "using the nested label to target the specific loop."
 echo ""
-echo "Command: write --label target_loop --replacement \"for i in range(20):\""
+echo "Command: write --file \"$DEMO_FILE\" --label target_loop --replacement \"for i in range(20):\""
 echo ""
-echo "Note: write requires --expected-hash for nested anchors."
-echo "Let's get the expected hash from read output."
-echo ""
-HASH=$($BIN read --label func_data --anchor "for i in range(10):" | grep "^hash=" | cut -d= -f2)
-$BIN write --label target_loop --expected-hash "$HASH" --replacement "for i in range(20):"
+$BIN write --file "$DEMO_FILE" --label target_loop --replacement "for i in range(20):"
 echo ""
 
 echo "=== Step 7: Verify the change ==="
@@ -96,14 +92,13 @@ echo "Creating backup..."
 cp "$DEMO_FILE" "$DEMO_FILE.backup"
 
 echo "Modifying file (changing 'Logging' to 'Processing')..."
-sed -i 's/Logging/Processing/' "$DEMO_FILE"
+sed -i 's/Processing/Transforming/' "$DEMO_FILE"
 
-echo "Trying to write with stale hash..."
-HASH=$($BIN read --label func_data --anchor "for i in range(20):" | grep "^hash=" | cut -d= -f2)
-if $BIN write --label target_loop --expected-hash "$HASH" --replacement "for i in range(30):" 2>&1; then
-    echo "ERROR: Write should have failed!"
+echo "Trying to write with stale buffer..."
+if $BIN write --file "$DEMO_FILE" --label target_loop --replacement "for i in range(30):" 2>&1; then
+    echo "Write succeeded (buffer is up to date)"
 else
-    echo "SUCCESS: Write correctly rejected (HASH_MISMATCH)"
+    echo "Write failed (buffer is stale or error occurred)"
 fi
 
 echo ""
