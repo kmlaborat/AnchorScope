@@ -1,8 +1,10 @@
+mod buffer_path;
 mod cli;
 mod commands;
 mod hash;
 mod matcher;
 mod storage;
+mod trueid;
 
 use clap::Parser;
 use cli::{Cli, Command};
@@ -59,8 +61,20 @@ fn main() {
         ),
         Command::Label {
             name,
-            internal_label,
-        } => commands::label::execute(&name, &internal_label),
+            true_id,
+        } => commands::label::execute(&name, &true_id),
+        Command::Tree { file } => commands::tree::execute(&file),
+        Command::TrueId {
+            file,
+            anchor,
+            anchor_file,
+            parent,
+        } => commands::trueid::execute(
+            &file,
+            anchor.as_deref(),
+            anchor_file.as_deref(),
+            parent.as_deref(),
+        ),
     };
 
     process::exit(exit_code);
