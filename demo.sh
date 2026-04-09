@@ -1,92 +1,116 @@
 #!/bin/bash
 
 # AnchorScope v1.2.0 Demo: Multi-Level Anchoring
-# Shows how to precisely edit ambiguous code using nested anchors
+# Demonstrates precise code editing using nested anchors with True IDs
 
 set -e
 
 echo "=== AnchorScope v1.2.0 Demo ==="
 echo "Demonstrating: Multi-level anchoring for precise code editing"
 echo ""
-
-APP_FILE="app.py"
-
-# Helper function to run anchorscope and show output
-run_anchorscope() {
-    echo "---"
-    echo "Command: $@"
-    echo "---"
-    cargo run --bin anchorscope -- "$@"
-    echo ""
-}
-
-# Clean up temp files first
-echo "Step 0: Clean up any existing buffer state"
+echo "This demo shows how to edit specific code sections when the same pattern"
+echo "appears multiple times in a file."
 echo ""
 
-echo "Step 1: Show the target file (app.py)"
-echo "========================================"
-cat "$APP_FILE"
+DEMO_FILE="demo_app.py"
+BIN="./target/debug/anchorscope"
+echo "Target file: $DEMO_FILE"
 echo ""
 
-echo "Step 2: Level 1 - Anchor the outer scope (function)"
-echo "======================================================"
-echo "Target: 'def process_data():' in app.py"
-echo "This anchors the entire function as the outer scope."
+# Show the demo file
+echo "=== Step 0: The Problem ==="
+echo "This file has TWO 'for i in range(10):' loops"
+echo "A simple global search would match BOTH, making edits ambiguous."
+echo ""
+echo "--- File content (relevant sections) ---"
+grep -n "for i in range(10):" "$DEMO_FILE"
 echo ""
 
-run_anchorscope read --file "$APP_FILE" --anchor "def process_data():"
-
+echo "=== Step 1: Level 1 - Anchor the outer scope ==="
+echo "We first anchor the specific function we want to edit."
+echo "Command: read --file $DEMO_FILE --anchor \"def process_data():\""
 echo ""
-echo "Step 3: Assign human-readable label to the function's True ID"
-echo "==============================================================="
-echo "The read command output includes:"
-echo "  - hash: Region hash (v1.1.0 compatible)"
-echo "  - true_id: True ID = xxh3_64(file_hash + \"_\" + region_hash)"
+$BIN read --file "$DEMO_FILE" --anchor "def process_data():"
 echo ""
 
-# Get the true_id from previous output
-TRUE_ID_FUNC=$(cargo run --quiet --bin anchorscope -- read --file "$APP_FILE" --anchor "def process_data():" | grep "true_id=" | cut -d= -f2)
+TRUE_ID_FUNC=$($BIN read --file "$DEMO_FILE" --anchor "def process_data():" | grep "^true_id=" | cut -d= -f2)
 echo "Function True ID: $TRUE_ID_FUNC"
 echo ""
 
-run_anchorscope label --name "func_data" --true-id "$TRUE_ID_FUNC"
+echo "=== Step 2: Create a human-readable label ==="
+echo "Command: label --name func_data --true-id $TRUE_ID_FUNC"
+echo ""
+$BIN label --name "func_data" --true-id "$TRUE_ID_FUNC"
 echo ""
 
-echo "Step 4: Level 2 - Anchor inside the buffer (nested anchor)"
-echo "============================================================"
-echo "Now we search for 'for i in range(10):' INSIDE the 'func_data' buffer."
+echo "=== Step 3: Level 2 - Nested anchor (inside the function buffer) ==="
+echo "Now we anchor the loop INSIDE the 'func_data' buffer."
 echo "Even though there are TWO 'for i in range(10):' in the file,"
-echo "there's only ONE inside the 'process_data' function."
+echo "there's only ONE inside the 'process_data' function buffer."
+echo ""
+echo "Command: read --file $DEMO_FILE --label func_data --anchor \"for i in range(10):\""
+echo ""
+$BIN read --file "$DEMO_FILE" --label func_data --anchor "for i in range(10):"
 echo ""
 
-echo "Trying to search in file directly (would fail with MULTIPLE_MATCHES):"
-echo "$ cargo run --quiet --bin anchorscope -- read --file \"$APP_FILE\" --anchor \"for i in range(10):\""
-cargo run --quiet --bin anchorscope -- read --file "$APP_FILE" --anchor "for i in range(10):" || true
+TRUE_ID_LOOP=$($BIN read --label func_data --anchor "for i in range(10):" | grep "^true_id=" | cut -d= -f2)
+echo "Loop True ID: $TRUE_ID_LOOP"
 echo ""
 
-echo "But searching INSIDE the buffer (success!):"
-# NOTE: Nested read not yet implemented - this is a placeholder for future implementation
-echo "ERROR: Nested read not yet implemented in current version"
+echo "=== Step 4: Create label for the loop ==="
+echo "Command: label --name target_loop --true-id $TRUE_ID_LOOP"
 echo ""
-echo "For now, we demonstrate the label system:"
-echo ""
-
-echo "Step 5: View buffer structure with tree command"
-echo "================================================"
-run_anchorscope tree --file "$APP_FILE"
+$BIN label --name "target_loop" --true-id "$TRUE_ID_LOOP"
 echo ""
 
-echo "Step 6: Write using label (deterministic replacement)"
-echo "======================================================"
-echo "We'll use label-based write which uses the label to find the anchor."
+echo "=== Step 5: View buffer structure ==="
+echo "Command: tree --file $DEMO_FILE"
+echo ""
+$BIN tree --file "$DEMO_FILE"
 echo ""
 
-echo "Step 7: Test HASH_MISMATCH safety"
-echo "=================================="
-echo "If the file changes after read but before write, write fails safely."
+echo "=== Step 6: Deterministic write using nested label ==="
+echo "We'll replace 'for i in range(10):' with 'for i in range(20):'"
+echo "using the nested label to target the specific loop."
+echo ""
+echo "Command: write --label target_loop --replacement \"for i in range(20):\""
+echo ""
+echo "Note: write requires --expected-hash for nested anchors."
+echo "Let's get the expected hash from read output."
+echo ""
+HASH=$($BIN read --label func_data --anchor "for i in range(10):" | grep "^hash=" | cut -d= -f2)
+$BIN write --label target_loop --expected-hash "$HASH" --replacement "for i in range(20):"
 echo ""
 
+echo "=== Step 7: Verify the change ==="
+echo ""
+echo "--- Updated loop ---"
+grep -A1 "for i in range(20):" "$DEMO_FILE"
+echo ""
+
+echo "=== Step 8: Demonstrate HASH_MISMATCH safety ==="
+echo "If we modify the file between read and write, write will fail safely."
+echo ""
+
+echo "Creating backup..."
+cp "$DEMO_FILE" "$DEMO_FILE.backup"
+
+echo "Modifying file (changing 'Logging' to 'Processing')..."
+sed -i 's/Logging/Processing/' "$DEMO_FILE"
+
+echo "Trying to write with stale hash..."
+HASH=$($BIN read --label func_data --anchor "for i in range(20):" | grep "^hash=" | cut -d= -f2)
+if $BIN write --label target_loop --expected-hash "$HASH" --replacement "for i in range(30):" 2>&1; then
+    echo "ERROR: Write should have failed!"
+else
+    echo "SUCCESS: Write correctly rejected (HASH_MISMATCH)"
+fi
+
+echo ""
+echo "Restoring original file..."
+mv "$DEMO_FILE.backup" "$DEMO_FILE"
+
+echo ""
 echo "=== Demo Complete ==="
 echo ""
 echo "Key Takeaways:"
@@ -95,4 +119,5 @@ echo "2. Nested anchors operate on buffer copies, not original file"
 echo "3. Labels provide human-readable references to True IDs"
 echo "4. HASH_MISMATCH prevents unsafe writes if file changes"
 echo "5. Buffer structure: {TMPDIR}/anchorscope/{file_hash}/{true_id}/content"
+echo "6. Ambiguous patterns become uniquely targetable with nested anchoring"
 echo ""

@@ -170,6 +170,13 @@ pub fn load_buffer_content(file_hash: &str, true_id: &str) -> Result<Vec<u8>, St
         .map_err(|e| io_error_to_spec(e, "read failure"))
 }
 
+/// Load file content from {TMPDIR}/anchorscope/{file_hash}/content.
+pub fn load_file_content(file_hash: &str) -> Result<Vec<u8>, String> {
+    let path = buffer_path::file_dir(file_hash).join("content");
+    fs::read(&path)
+        .map_err(|e| io_error_to_spec(e, "read failure"))
+}
+
 /// Load buffer metadata from {TMPDIR}/anchorscope/{file_hash}/{true_id}/metadata.json.
 pub fn load_buffer_metadata(file_hash: &str, true_id: &str) -> Result<BufferMeta, String> {
     let path = buffer_path::true_id_dir(file_hash, true_id).join("metadata.json");

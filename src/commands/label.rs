@@ -24,16 +24,20 @@ pub fn execute(name: &str, true_id: &str) -> i32 {
     let exists_in_new_location = if exists_in_old_location {
         true
     } else if let Ok(entries) = std::fs::read_dir(&temp_dir) {
-        entries
+        let found = entries
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
             .any(|e| {
                 let file_hash_dir = e.path();
                 let true_id_dir = file_hash_dir.join(true_id);
                 let content_path = true_id_dir.join("content");
+                eprintln!("DEBUG label: checking {}", content_path.display());
                 content_path.exists()
-            })
+            });
+        eprintln!("DEBUG label: found={}", found);
+        found
     } else {
+        eprintln!("DEBUG label: cannot read temp_dir");
         false
     };
     
