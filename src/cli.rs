@@ -73,23 +73,4 @@ pub enum Command {
         #[arg(long)]
         file: String,
     },
-
-    /// True ID of an anchor (for advanced use).
-    TrueId {
-        /// Path to the target file.
-        #[arg(long)]
-        file: String,
-
-        /// Anchor string.
-        #[arg(long)]
-        anchor: Option<String>,
-
-        /// Path to a file containing the anchor string.
-        #[arg(long)]
-        anchor_file: Option<String>,
-
-        /// Parent True ID (for nested anchors).
-        #[arg(long)]
-        parent: Option<String>,
-    },
 }
