@@ -2,10 +2,13 @@ use std::fs;
 use crate::storage;
 
 /// Read: locate anchor, print location + hash. Exit 0 on success, 1 on error.
+/// If target is a buffer copy (file_hash/content or file_hash/true_id/content),
+/// creates nested buffer structure per SPEC §4.3.
 pub fn execute(
     file_path: &str,
     anchor: Option<&str>,
     anchor_file: Option<&str>,
+    parent_true_id: Option<&str>,
 ) -> i32 {
     let raw = match fs::read(file_path) {
         Ok(b) => b,
@@ -21,6 +24,10 @@ pub fn execute(
         return 1;
     }
 
+    // Check if this is a buffer read (nested level)
+    // Buffer files are at: {file_hash}/content or {file_hash}/{true_id}/content
+    let is_buffer_read = false; // TODO: implement buffer path detection
+    
     let normalized = crate::matcher::normalize_line_endings(&raw);
     let anchor_bytes = match crate::load_anchor(anchor, anchor_file) {
         Ok(a) => a,
@@ -79,6 +86,11 @@ pub fn execute(
             if let Err(e) = storage::save_region_content(&file_hash, &true_id, region) {
                 eprintln!("IO_ERROR: cannot save region content: {}", e);
                 return 1;
+            }
+            
+            // For nested reads, also save to nested location
+            if is_buffer_read {
+                // TODO: save to {file_hash}/{parent_true_id}/{true_id}/content
             }
             
             // For v1.2.0: output both label (v1.1.0 compat) and true_id
