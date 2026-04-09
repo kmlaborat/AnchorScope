@@ -9,8 +9,8 @@ All operations are strictly **byte-level, deterministic, and single-location**.
 
 AnchorScope v1.2.0 extends v1.1.0 by introducing:
 
-* **True ID (真名)**: hash-based unique identity for every anchor
-* **Alias (エイリアス)**: optional human-readable name via `label` command
+* **True ID**: hash-based unique identity for every anchor
+* **Alias**: optional human-readable name via `label` command
 * **Anchor Buffer**: a structured temporary directory enabling multi-level anchoring
 
 ---
@@ -180,7 +180,7 @@ This is the hash returned by `read` and used as `expected_hash` in `write`.
 
 ---
 
-### 3.2 True ID (真名)
+### 3.2 True ID
 
 The **True ID** uniquely identifies an anchor within its parent scope.
 
@@ -205,7 +205,7 @@ Properties:
 
 ---
 
-### 3.3 Alias (エイリアス)
+### 3.3 Alias
 
 An **alias** is an optional human-readable name assigned to a True ID via the `label` command.
 

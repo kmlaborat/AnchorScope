@@ -9,8 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [1.2.0] - 2026-04-09
 
 ### Added
-- **True ID (真名)**: hash-based unique identity for every anchor
-- **Alias (エイリアス)**: optional human-readable name via `label` command
+- **True ID**: hash-based unique identity for every anchor
+- **Alias**: optional human-readable name via `label` command
 - **Anchor Buffer**: structured temporary directory for multi-level anchoring
 - **tree command**: display current buffer structure
 - **trueid command**: compute True ID for nested anchoring
