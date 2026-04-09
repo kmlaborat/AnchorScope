@@ -11,5 +11,8 @@ desktop.ini
 # Windows reserved name artifact
 nul
 
+# AI tools
+.qwen/
+
 # Archive / reference specs (not part of release)
 docs/archive/
