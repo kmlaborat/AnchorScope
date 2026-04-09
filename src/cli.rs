@@ -27,6 +27,10 @@ pub enum Command {
         /// Path to a file containing the anchor string.
         #[arg(long)]
         anchor_file: Option<String>,
+
+        /// Use a human-readable label to identify the parent buffer anchor.
+        #[arg(long, conflicts_with_all = ["anchor_file"])]
+        label: Option<String>,
     },
 
     /// Replace anchor region if expected_hash matches.

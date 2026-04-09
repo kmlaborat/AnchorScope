@@ -8,7 +8,7 @@ pub fn execute(
     file_path: &str,
     anchor: Option<&str>,
     anchor_file: Option<&str>,
-    parent_true_id: Option<&str>,
+    label: Option<&str>,
 ) -> i32 {
     let raw = match fs::read(file_path) {
         Ok(b) => b,

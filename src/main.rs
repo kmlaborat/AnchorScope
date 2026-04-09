@@ -42,7 +42,8 @@ fn main() {
             file,
             anchor,
             anchor_file,
-        } => commands::read::execute(&file, anchor.as_deref(), anchor_file.as_deref(), None),
+            label,
+        } => commands::read::execute(&file, anchor.as_deref(), anchor_file.as_deref(), label.as_deref()),
         Command::Write {
             file,
             anchor,
