@@ -38,12 +38,18 @@ pub fn execute(
         Ok(m) => {
             let region = &normalized[m.byte_start..m.byte_end];
             let h = crate::hash::compute(region);
+            
+            // Compute file_hash and true_id first (needed for buffer save)
+            let file_hash = crate::hash::compute(&normalized);
+            let true_id = crate::hash::compute(format!("{}_{}", file_hash, h).as_bytes());
+            
             // Output is machine-readable: one key=value per line.
             println!("start_line={}", m.start_line);
             println!("end_line={}", m.end_line);
             println!("hash={}", h);
             println!("content={}", String::from_utf8_lossy(region));
-            // Save anchor metadata and output internal label
+            
+            // Save anchor metadata per SPEC (v1.1.0 compatibility)
             let anchor_str = String::from_utf8_lossy(&anchor_bytes).to_string();
             let meta = storage::AnchorMeta {
                 file: file_path.to_string(),
@@ -55,11 +61,28 @@ pub fn execute(
                 eprintln!("IO_ERROR: cannot save anchor metadata: {}", e);
                 return 1;
             }
+            
+            // Save buffer content per SPEC §4.3
+            // Save normalized file content to {file_hash}/content
+            if let Err(e) = storage::save_file_content(&file_hash, &normalized) {
+                eprintln!("IO_ERROR: cannot save file content: {}", e);
+                return 1;
+            }
+            
+            // Save source path
+            if let Err(e) = storage::save_source_path(&file_hash, file_path) {
+                eprintln!("IO_ERROR: cannot save source path: {}", e);
+                return 1;
+            }
+            
+            // Save matched region content to {file_hash}/{true_id}/content
+            if let Err(e) = storage::save_region_content(&file_hash, &true_id, region) {
+                eprintln!("IO_ERROR: cannot save region content: {}", e);
+                return 1;
+            }
+            
             // For v1.2.0: output both label (v1.1.0 compat) and true_id
             // label is the region hash for v1.1.0 compatibility
-            // true_id is computed as xxh3_64(file_hash + "_" + region_hash) for root level
-            let file_hash = crate::hash::compute(&normalized);
-            let true_id = crate::hash::compute(format!("{}_{}", file_hash, h).as_bytes());
             println!("label={}", h);
             println!("true_id={}", true_id);
             0

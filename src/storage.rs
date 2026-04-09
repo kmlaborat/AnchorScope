@@ -108,6 +108,24 @@ pub fn load_label_target(name: &str) -> Result<String, String> {
         .map(|meta| meta.true_id)
 }
 
+/// Save normalized file content to {TMPDIR}/anchorscope/{file_hash}/content.
+pub fn save_file_content(file_hash: &str, content: &[u8]) -> Result<(), String> {
+    let dir = buffer_path::file_dir(file_hash);
+    ensure_dir(&dir)?;
+    let path = dir.join("content");
+    fs::write(&path, content)
+        .map_err(|e| io_error_to_spec(e, "write failure"))
+}
+
+/// Save source path to {TMPDIR}/anchorscope/{file_hash}/source_path.
+pub fn save_source_path(file_hash: &str, path: &str) -> Result<(), String> {
+    let dir = buffer_path::file_dir(file_hash);
+    ensure_dir(&dir)?;
+    let path_file = dir.join("source_path");
+    fs::write(&path_file, path)
+        .map_err(|e| io_error_to_spec(e, "write failure"))
+}
+
 /// Save buffer content to {TMPDIR}/anchorscope/{file_hash}/{true_id}/content.
 pub fn save_buffer_content(file_hash: &str, true_id: &str, content: &[u8]) -> Result<(), String> {
     let dir = buffer_path::true_id_dir(file_hash, true_id);
@@ -115,6 +133,12 @@ pub fn save_buffer_content(file_hash: &str, true_id: &str, content: &[u8]) -> Re
     let path = dir.join("content");
     fs::write(&path, content)
         .map_err(|e| io_error_to_spec(e, "write failure"))
+}
+
+/// Save matched region content to {TMPDIR}/anchorscope/{file_hash}/{true_id}/content.
+/// This is an alias for save_buffer_content for clarity.
+pub fn save_region_content(file_hash: &str, true_id: &str, content: &[u8]) -> Result<(), String> {
+    save_buffer_content(file_hash, true_id, content)
 }
 
 /// Save buffer metadata to {TMPDIR}/anchorscope/{file_hash}/{true_id}/metadata.json.
