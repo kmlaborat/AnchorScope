@@ -1,5 +1,7 @@
 use std::fs;
+use std::path::Path;
 use crate::storage;
+use crate::buffer_path;
 
 /// Read: locate anchor, print location + hash. Exit 0 on success, 1 on error.
 /// If target is a buffer copy (file_hash/content or file_hash/true_id/content),
@@ -10,7 +12,71 @@ pub fn execute(
     anchor_file: Option<&str>,
     label: Option<&str>,
 ) -> i32 {
-    let raw = match fs::read(file_path) {
+    // Resolve target file and anchor bytes
+    // If label is provided, read from buffer content instead of file
+    let (target_file, anchor_bytes, buffer_parent_true_id) = if let Some(label_name) = label {
+        // Label mode: resolve label to buffer content
+        let true_id = match storage::load_label_target(label_name) {
+            Ok(tid) => tid,
+            Err(e) => {
+                eprintln!("{}", e);
+                return 1;
+            }
+        };
+        
+        // Load source path from buffer
+        // We need to find the file_hash that contains this true_id
+        let file_hash = match find_file_hash_for_true_id(&true_id) {
+            Some(h) => h,
+            None => {
+                eprintln!("IO_ERROR: buffer metadata for true_id '{}' not found", true_id);
+                return 1;
+            }
+        };
+        
+        // Load source path
+        let source_path = match storage::load_source_path(&file_hash) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("IO_ERROR: cannot load source path: {}", e);
+                return 1;
+            }
+        };
+        
+        // Load buffer content from {file_hash}/content (root level)
+        let buffer_content = match storage::load_buffer_content(&file_hash, &true_id) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("IO_ERROR: cannot load buffer content: {}", e);
+                return 1;
+            }
+        };
+        
+        // Normalize the anchor
+        let anchor_bytes = match crate::load_anchor(anchor, anchor_file) {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("{}", e);
+                return 1;
+            }
+        };
+        
+        (source_path, anchor_bytes, Some(true_id))
+    } else {
+        // Direct mode: use provided args
+        let anchor_bytes = match crate::load_anchor(anchor, anchor_file) {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("{}", e);
+                return 1;
+            }
+        };
+        
+        (file_path.to_string(), anchor_bytes, None)
+    };
+
+    // Read and validate file
+    let raw = match fs::read(&target_file) {
         Ok(b) => b,
         Err(e) => {
             eprintln!("{}", crate::map_io_error_read(e));
@@ -24,20 +90,10 @@ pub fn execute(
         return 1;
     }
 
-    // Check if this is a buffer read (nested level)
-    // Buffer files are at: {file_hash}/content or {file_hash}/{true_id}/content
-    let is_buffer_read = false; // TODO: implement buffer path detection
-    
     let normalized = crate::matcher::normalize_line_endings(&raw);
-    let anchor_bytes = match crate::load_anchor(anchor, anchor_file) {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("{}", e);
-            return 1;
-        }
-    };
+    let anchor_bytes_normalized = crate::matcher::normalize_line_endings(&anchor_bytes);
 
-    match crate::matcher::resolve(&normalized, &anchor_bytes) {
+    match crate::matcher::resolve(&normalized, &anchor_bytes_normalized) {
         Err(e) => {
             eprintln!("{}", e);
             1
@@ -48,7 +104,13 @@ pub fn execute(
             
             // Compute file_hash and true_id first (needed for buffer save)
             let file_hash = crate::hash::compute(&normalized);
-            let true_id = crate::hash::compute(format!("{}_{}", file_hash, h).as_bytes());
+            
+            // Compute True ID with parent context if nested
+            let true_id = if let Some(ref parent_true_id) = buffer_parent_true_id {
+                crate::hash::compute(format!("{}_{}", parent_true_id, h).as_bytes())
+            } else {
+                crate::hash::compute(format!("{}_{}", file_hash, h).as_bytes())
+            };
             
             // Output is machine-readable: one key=value per line.
             println!("start_line={}", m.start_line);
@@ -57,9 +119,9 @@ pub fn execute(
             println!("content={}", String::from_utf8_lossy(region));
             
             // Save anchor metadata per SPEC (v1.1.0 compatibility)
-            let anchor_str = String::from_utf8_lossy(&anchor_bytes).to_string();
+            let anchor_str = String::from_utf8_lossy(&anchor_bytes_normalized).to_string();
             let meta = storage::AnchorMeta {
-                file: file_path.to_string(),
+                file: target_file.clone(),
                 anchor: anchor_str,
                 hash: h.clone(),
                 line_range: (m.start_line, m.end_line),
@@ -77,7 +139,7 @@ pub fn execute(
             }
             
             // Save source path
-            if let Err(e) = storage::save_source_path(&file_hash, file_path) {
+            if let Err(e) = storage::save_source_path(&file_hash, &target_file) {
                 eprintln!("IO_ERROR: cannot save source path: {}", e);
                 return 1;
             }
@@ -88,9 +150,12 @@ pub fn execute(
                 return 1;
             }
             
-            // For nested reads, also save to nested location
-            if is_buffer_read {
-                // TODO: save to {file_hash}/{parent_true_id}/{true_id}/content
+            // For nested reads, save to nested location
+            if let Some(ref parent_true_id) = buffer_parent_true_id {
+                if let Err(e) = storage::save_nested_buffer_content(&file_hash, parent_true_id, &true_id, region) {
+                    eprintln!("IO_ERROR: cannot save nested buffer content: {}", e);
+                    return 1;
+                }
             }
             
             // For v1.2.0: output both label (v1.1.0 compat) and true_id
@@ -100,4 +165,46 @@ pub fn execute(
             0
         }
     }
+}
+
+/// Find file_hash containing a given true_id by searching all buffer directories
+fn find_file_hash_for_true_id(true_id: &str) -> Option<String> {
+    let temp_dir = buffer_path::anchorscope_temp_dir();
+    let anchorscope_dir = temp_dir.join("anchorscope");
+    
+    if let Ok(entries) = std::fs::read_dir(&anchorscope_dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                let file_hash = entry.file_name();
+                let file_hash_str = file_hash.to_string_lossy();
+                
+                // Check if {file_hash}/{true_id}/content exists
+                let content_path = buffer_path::true_id_dir(&file_hash_str, true_id).join("content");
+                if content_path.exists() {
+                    return Some(file_hash_str.to_string());
+                }
+                
+                // Check nested: {file_hash}/{parent_true_id}/{true_id}/content
+                let parent_dir = buffer_path::file_dir(&file_hash_str);
+                if let Ok(parent_entries) = std::fs::read_dir(&parent_dir) {
+                    for parent_entry in parent_entries.flatten() {
+                        if parent_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                            let parent_true_id = parent_entry.file_name();
+                            let nested_content_path = buffer_path::nested_true_id_dir(
+                                &file_hash_str,
+                                &parent_true_id.to_string_lossy(),
+                                true_id
+                            ).join("content");
+                            
+                            if nested_content_path.exists() {
+                                return Some(file_hash_str.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    None
 }

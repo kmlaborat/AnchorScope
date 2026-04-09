@@ -141,6 +141,15 @@ pub fn save_region_content(file_hash: &str, true_id: &str, content: &[u8]) -> Re
     save_buffer_content(file_hash, true_id, content)
 }
 
+/// Save nested buffer content to {TMPDIR}/anchorscope/{file_hash}/{parent_true_id}/{true_id}/content.
+pub fn save_nested_buffer_content(file_hash: &str, parent_true_id: &str, true_id: &str, content: &[u8]) -> Result<(), String> {
+    let dir = buffer_path::nested_true_id_dir(file_hash, parent_true_id, true_id);
+    ensure_dir(&dir)?;
+    let path = dir.join("content");
+    fs::write(&path, content)
+        .map_err(|e| io_error_to_spec(e, "write failure"))
+}
+
 /// Save buffer metadata to {TMPDIR}/anchorscope/{file_hash}/{true_id}/metadata.json.
 pub fn save_buffer_metadata(file_hash: &str, true_id: &str, meta: &BufferMeta) -> Result<(), String> {
     let dir = buffer_path::true_id_dir(file_hash, true_id);
