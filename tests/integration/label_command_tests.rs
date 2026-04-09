@@ -13,9 +13,9 @@ fn test_label_command_success() {
         "--file", file_path.to_str().unwrap(),
         "--anchor", "fn main() {\n    println!(\"Hello\");\n}"
     ]);
-    assert!(output.status.success());
+    assert!(output.status.success(), "read failed, stderr: {}", String::from_utf8_lossy(&output.stderr));
     let result = parse_output(&String::from_utf8_lossy(&output.stdout));
-    let internal_label = result.get("label").unwrap().clone();
+    let internal_label = result.get("true_id").unwrap().clone();
 
     // Step 2: Call label command to assign human-readable name
     let output = run_anchorscope(&[

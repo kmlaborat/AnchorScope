@@ -12,7 +12,7 @@ fn test_anchor_and_label_files_created() {
     let output = run_anchorscope(&[
         "read", "--file", file_path.to_str().unwrap(), "--anchor", "Hello"
     ]);
-    assert!(output.status.success());
+    assert!(output.status.success(), "read failed, stderr: {}", String::from_utf8_lossy(&output.stderr));
     let result = parse_output(&String::from_utf8_lossy(&output.stdout));
     let label_hash = result.get("label").unwrap().clone();
 

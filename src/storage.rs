@@ -47,6 +47,7 @@ fn io_error_to_spec(e: std::io::Error, context: &str) -> String {
 /// Errors use SPEC §4.5 format.
 pub fn save_anchor_metadata(meta: &AnchorMeta) -> Result<(), String> {
     let dir = buffer_path::anchors_dir();
+    ensure_dir(&dir)?;
     let path = dir.join(format!("{}.json", meta.hash));
     let json = serde_json::to_string_pretty(meta)
         .map_err(|e| format!("IO_ERROR: JSON serialization failed: {}", e))?;
@@ -100,6 +101,7 @@ pub fn save_label_mapping(name: &str, true_id: &str) -> Result<(), String> {
 /// Errors use SPEC §4.5 format.
 pub fn load_label_target(name: &str) -> Result<String, String> {
     let dir = buffer_path::labels_dir();
+    ensure_dir(&dir).map_err(|e| e)?;
     let path = dir.join(format!("{}.json", name));
     let content = fs::read_to_string(&path)
         .map_err(|e| io_error_to_spec(e, "read failure"))?;
