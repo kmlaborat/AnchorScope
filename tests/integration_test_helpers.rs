@@ -20,12 +20,22 @@ pub fn read_file(path: &PathBuf) -> String {
 /// Runs the anchorscope binary with the given arguments.
 /// Returns the process Output.
 pub fn run_anchorscope(args: &[&str]) -> std::process::Output {
-    let output = Command::new("cargo")
-        .arg("run")
+    // Build first to ensure binary is up to date
+    let build_output = Command::new("cargo")
+        .arg("build")
         .arg("--quiet")
         .arg("--bin")
         .arg("anchorscope")
-        .arg("--")
+        .output()
+        .expect("failed to build anchorscope");
+    
+    if !build_output.status.success() {
+        panic!("Build failed: {}", String::from_utf8_lossy(&build_output.stderr));
+    }
+    
+    // Run the built binary directly
+    let binary_path = std::path::Path::new("target").join("debug").join("anchorscope");
+    let output = Command::new(&binary_path)
         .args(args)
         .output()
         .expect("failed to execute anchorscope");

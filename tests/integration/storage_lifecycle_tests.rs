@@ -20,7 +20,7 @@ fn test_anchor_and_label_files_created() {
     assert!(anchor_file.exists(), "anchor metadata should exist after read");
 
     run_anchorscope(&[
-        "label", "--name", "greeting", "--internal-label", &label_hash
+        "label", "--name", "greeting", "--true-id", &label_hash
     ]);
 
     let label_file = anchorscope_temp_dir().join("labels").join("greeting.json");
@@ -39,7 +39,7 @@ fn test_write_using_label_invalidates_files() {
     let internal_label = result.get("label").unwrap().clone();
 
     let label_out = run_anchorscope(&[
-        "label", "--name", "greet", "--internal-label", &internal_label
+        "label", "--name", "greet", "--true-id", &internal_label
     ]);
     assert!(label_out.status.success());
 

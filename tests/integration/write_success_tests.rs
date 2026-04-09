@@ -194,7 +194,7 @@ fn write_using_label() {
 
     // 2. create human-readable label
     let out_label = run_anchorscope(&[
-        "label", "--name", "my_anchor", "--internal-label", &internal_label
+        "label", "--name", "my_anchor", "--true-id", &internal_label
     ]);
     assert!(out_label.status.success(), "label failed: {}", String::from_utf8_lossy(&out_label.stderr));
 

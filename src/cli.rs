@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 // AnchorScope enforces UTF-8 only for file-based inputs explicitly.
 
 #[derive(Parser)]
-#[command(name = "anchorscope", version = "1.1.0", about = "AnchorScope v1.1.0")]
+#[command(name = "anchorscope", version = "1.2.0", about = "AnchorScope v1.2.0")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -56,14 +56,40 @@ pub enum Command {
         replacement: String,
     },
 
-    /// Assign a human-readable name to an internal label.
+    /// Assign a human-readable name to a True ID.
     Label {
         /// Human-readable name.
         #[arg(long)]
         name: String,
 
-        /// Internal label (hash from read output).
+        /// True ID (hash from read output).
         #[arg(long)]
-        internal_label: String,
+        true_id: String,
+    },
+
+    /// Display current buffer structure.
+    Tree {
+        /// Path to the target file.
+        #[arg(long)]
+        file: String,
+    },
+
+    /// True ID of an anchor (for advanced use).
+    TrueId {
+        /// Path to the target file.
+        #[arg(long)]
+        file: String,
+
+        /// Anchor string.
+        #[arg(long)]
+        anchor: Option<String>,
+
+        /// Path to a file containing the anchor string.
+        #[arg(long)]
+        anchor_file: Option<String>,
+
+        /// Parent True ID (for nested anchors).
+        #[arg(long)]
+        parent: Option<String>,
     },
 }

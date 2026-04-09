@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-04-09
+
+### Added
+- **True ID (真名)**: hash-based unique identity for every anchor
+- **Alias (エイリアス)**: optional human-readable name via `label` command
+- **Anchor Buffer**: structured temporary directory for multi-level anchoring
+- **tree command**: display current buffer structure
+- **trueid command**: compute True ID for nested anchoring
+
+### Changed
+- `label` command now uses `--true-id` instead of `--internal-label`
+- `read` output includes both `label` (v1.1.0 compat) and `true_id` fields
+- Buffer storage: `{TMPDIR}/anchorscope/{file_hash}/{true_id}/content`
+- Labels storage: `{TMPDIR}/anchorscope/labels/{alias}.json`
+
+### Breaking Changes
+- `--internal-label` replaced by `--true-id` in `label` command
+- Label metadata format changed from `internal_label` to `true_id`
+
+### Fixed
+- Label validation: now checks if True ID exists in buffer before creating alias
+
 ## [1.1.0] - 2026-04-07
 
 ### Added

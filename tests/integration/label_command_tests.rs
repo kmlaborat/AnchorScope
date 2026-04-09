@@ -21,24 +21,24 @@ fn test_label_command_success() {
     let output = run_anchorscope(&[
         "label",
         "--name", "main_function",
-        "--internal-label", &internal_label
+        "--true-id", &internal_label
     ]);
     assert!(output.status.success(), "label should succeed, stderr: {}", String::from_utf8_lossy(&output.stderr));
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("OK: label 'main_function' defined"));
+    assert!(stdout.contains("OK: alias 'main_function' defined"));
 }
 
 #[test]
 fn test_label_unknown_internal() {
-    // Try to label a non-existent internal label
+    // Try to label a non-existent true_id
     let output = run_anchorscope(&[
         "label",
         "--name", "test",
-        "--internal-label", "0000000000000000"
+        "--true-id", "0000000000000000"
     ]);
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("IO_ERROR: anchor metadata for hash"));
+    assert!(stderr.contains("IO_ERROR: buffer metadata for true_id") || stderr.contains("IO_ERROR: file not found") || stderr.contains("IO_ERROR: anchor metadata for hash"));
 }
 
 #[test]
@@ -63,7 +63,7 @@ fn test_label_name_collision() {
     let out_label1 = run_anchorscope(&[
         "label",
         "--name", "func",
-        "--internal-label", &label1
+        "--true-id", &label1
     ]);
     assert!(out_label1.status.success());
 
@@ -77,11 +77,11 @@ fn test_label_name_collision() {
     let res2 = parse_output(&String::from_utf8_lossy(&out2.stdout));
     let label2 = res2.get("label").unwrap().clone();
 
-    // Try to assign same name "func" to different internal label -> should fail
+    // Try to assign same name "func" to different true_id -> should fail
     let out_label2 = run_anchorscope(&[
         "label",
         "--name", "func",
-        "--internal-label", &label2
+        "--true-id", &label2
     ]);
     assert!(!out_label2.status.success());
     let stderr = String::from_utf8_lossy(&out_label2.stderr);

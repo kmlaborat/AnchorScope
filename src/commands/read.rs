@@ -1,5 +1,6 @@
 use std::fs;
 use crate::storage;
+use crate::trueid;
 
 /// Read: locate anchor, print location + hash. Exit 0 on success, 1 on error.
 pub fn execute(
@@ -55,7 +56,12 @@ pub fn execute(
                 eprintln!("IO_ERROR: cannot save anchor metadata: {}", e);
                 return 1;
             }
+            // For v1.2.0: output both label (v1.1.0 compat) and true_id
+            // label is the region hash for v1.1.0 compatibility
+            // true_id is computed as xxh3_64(file_hash + "_" + region_hash) for root level
+            let true_id = trueid::compute(file_path, &h, None);
             println!("label={}", h);
+            println!("true_id={}", true_id);
             0
         }
     }
