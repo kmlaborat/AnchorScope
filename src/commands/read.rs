@@ -131,7 +131,10 @@ pub fn execute(
                     let max_depth = config::max_depth();
                     match calculate_nesting_depth(parent_tid, &file_hash) {
                         Ok(depth) => {
-                            if depth >= max_depth {
+                            // depth is the parent's nesting level.
+                            // Child would be at depth + 1.
+                            // If parent is at max_depth - 1, child would exceed limit.
+                            if depth >= max_depth - 1 {
                                 eprintln!("IO_ERROR: maximum nesting depth ({}) exceeded", max_depth);
                                 return 1;
                             }
@@ -149,7 +152,10 @@ pub fn execute(
                 // Load parent buffer metadata to obtain its region hash
                 let parent_region_hash = match storage::load_buffer_metadata(&file_hash, &parent_tid) {
                     Ok(meta) => meta.region_hash,
-                    Err(_) => parent_tid.clone(), // fallback to parent true_id if metadata missing
+                    Err(e) => {
+                        eprintln!("IO_ERROR: parent buffer metadata corrupted: {}", e);
+                        return 1;
+                    }
                 };
                 let region_hash = crate::hash::compute(region);
                 (crate::hash::compute(format!("{}_{}", parent_region_hash, region_hash).as_bytes()), Some(parent_tid.clone()))
@@ -350,29 +356,39 @@ fn find_file_hash_for_true_id(true_id: &str) -> Option<String> {
 
 /// Calculate the nesting depth for a given true_id by tracing its parent chain
 /// Returns the depth (0 for level-1, 1 for level-2, etc.)
+/// Level 1 (file_hash) is depth 0, Level 2 is depth 1, etc.
 fn calculate_nesting_depth(true_id: &str, file_hash: &str) -> Result<usize, String> {
     use std::collections::VecDeque;
     
-    // BFS search to find the true_id and count nesting depth
+    // Level-by-level BFS to count depth correctly
     let file_dir = buffer_path::file_dir(file_hash);
     let mut queue = VecDeque::new();
-    queue.push_back((file_dir, 0)); // (directory, depth)
+    queue.push_back(file_dir);
     
-    while let Some((current_dir, depth)) = queue.pop_front() {
-        // Check if {current_dir}/{true_id}/content exists
-        let content_path = current_dir.join(true_id).join("content");
-        if content_path.exists() {
-            return Ok(depth);
-        }
-        
-        // Add all subdirectories to the queue with incremented depth
-        if let Ok(entries) = std::fs::read_dir(&current_dir) {
-            for entry in entries.flatten() {
-                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                    queue.push_back((entry.path(), depth + 1));
+    let mut current_depth = 0;
+    
+    while !queue.is_empty() {
+        // Process all nodes at current depth
+        let level_size = queue.len();
+        for _ in 0..level_size {
+            let current_dir = queue.pop_front().unwrap();
+            
+            // Check if {current_dir}/{true_id}/content exists
+            let content_path = current_dir.join(true_id).join("content");
+            if content_path.exists() {
+                return Ok(current_depth);
+            }
+            
+            // Add all subdirectories to the queue
+            if let Ok(entries) = std::fs::read_dir(&current_dir) {
+                for entry in entries.flatten() {
+                    if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                        queue.push_back(entry.path());
+                    }
                 }
             }
         }
+        current_depth += 1;
     }
     
     Err(format!("IO_ERROR: buffer metadata for true_id '{}' not found", true_id))
@@ -382,7 +398,6 @@ fn calculate_nesting_depth(true_id: &str, file_hash: &str) -> Result<usize, Stri
 mod tests {
     use super::*;
     use crate::{hash, storage};
-    use std::fs;
 
     #[test]
     fn true_id_nested_uses_parent_region_hash() {
@@ -432,8 +447,8 @@ mod tests {
         let inner_meta = storage::load_buffer_metadata(&file_hash, &expected_true_id).expect("inner metadata not found");
         assert_eq!(inner_meta.parent_true_id.as_deref(), Some(outer_true_id.as_str()));
         // Cleanup
-        storage::invalidate_true_id(&file_hash, &outer_true_id);
-        storage::invalidate_true_id(&file_hash, &expected_true_id);
+        storage::invalidate_true_id_hierarchy(&file_hash, &outer_true_id).unwrap();
+        storage::invalidate_true_id_hierarchy(&file_hash, &expected_true_id).unwrap();
         storage::invalidate_label("tmp_label");
         let _ = std::fs::remove_file(tmp_file_path);
     }

@@ -63,16 +63,7 @@ pub fn save_anchor_metadata(meta: &AnchorMeta) -> Result<(), String> {
         .map_err(|e| io_error_to_spec(e, "write failure"))
 }
 
-/// Load anchor metadata from {TMPDIR}/anchorscope/anchors/{hash}.json.
-/// Errors use SPEC §4.5 format.
-pub fn load_anchor_metadata(hash: &str) -> Result<AnchorMeta, String> {
-    let dir = buffer_path::anchors_dir();
-    let path = dir.join(format!("{}.json", hash));
-    let content = fs::read_to_string(&path)
-        .map_err(|e| io_error_to_spec(e, "read failure"))?;
-    serde_json::from_str(&content)
-        .map_err(|e| format!("IO_ERROR: anchor metadata corrupted: {}", e))
-}
+
 
 /// Save label mapping to {TMPDIR}/anchorscope/labels/{name}.json.
 /// The label file contains: { "true_id": "<hash>" }.
@@ -139,25 +130,7 @@ pub fn save_region_content(file_hash: &str, true_id: &str, content: &[u8]) -> Re
     save_buffer_content(file_hash, true_id, content)
 }
 
-/// Save nested buffer content to {TMPDIR}/anchorscope/{file_hash}/{parent_true_id}/{true_id}/content.
-pub fn save_nested_buffer_content(file_hash: &str, parent_true_id: &str, true_id: &str, content: &[u8]) -> Result<(), String> {
-    let dir = buffer_path::nested_true_id_dir(file_hash, parent_true_id, true_id);
-    ensure_dir(&dir)?;
-    let path = dir.join("content");
-    fs::write(&path, content)
-        .map_err(|e| io_error_to_spec(e, "write failure"))
-}
 
-/// Save nested buffer metadata to {TMPDIR}/anchorscope/{file_hash}/{parent_true_id}/{true_id}/metadata.json.
-pub fn save_nested_buffer_metadata(file_hash: &str, parent_true_id: &str, true_id: &str, meta: &BufferMeta) -> Result<(), String> {
-    let dir = buffer_path::nested_true_id_dir(file_hash, parent_true_id, true_id);
-    ensure_dir(&dir)?;
-    let path = dir.join("metadata.json");
-    let json = serde_json::to_string_pretty(meta)
-        .map_err(|e| format!("IO_ERROR: JSON serialization failed: {}", e))?;
-    fs::write(&path, json)
-        .map_err(|e| io_error_to_spec(e, "write failure"))
-}
 
 /// Save buffer metadata to {TMPDIR}/anchorscope/{file_hash}/{true_id}/metadata.json.
 pub fn save_buffer_metadata(file_hash: &str, true_id: &str, meta: &BufferMeta) -> Result<(), String> {
@@ -212,30 +185,7 @@ pub fn find_true_id_dir(file_hash: &str, true_id: &str) -> Result<Option<PathBuf
     Ok(if found_paths.is_empty() { None } else { Some(found_paths[0].clone()) })
 }
 
-/// Find file_hash containing a given true_id by searching all buffer directories
-pub fn find_file_hash_for_true_id(true_id: &str) -> Option<String> {
-    let temp_dir = std::env::temp_dir();
-    let anchorscope_dir = temp_dir.join("anchorscope");
-    
-    // Search all file_hash directories
-    if let Ok(entries) = std::fs::read_dir(&anchorscope_dir) {
-        for entry in entries.flatten() {
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                let file_hash = entry.file_name();
-                let file_hash_str = file_hash.to_string_lossy();
-                
-                // Use BFS to search all nested locations for this true_id
-                let file_dir = buffer_path::file_dir(&file_hash_str);
-                let (found, _count) = file_hash_exists_in_dir_with_count(&file_dir, true_id);
-                if found {
-                    return Some(file_hash_str.to_string());
-                }
-            }
-        }
-    }
-    
-    None
-}
+
 
 /// Check if true_id exists in the directory tree.
 /// Returns (found, count) where count is the number of matching directories.
@@ -385,16 +335,11 @@ mod tests {
         save_buffer_metadata(&file_hash, true_id, &buffer_meta).expect("save buffer metadata");
         let resolved = file_hash_for_true_id(true_id).expect("resolve file hash");
         assert_eq!(resolved, file_hash);
-        invalidate_true_id(&file_hash, true_id);
+        invalidate_true_id_hierarchy(&file_hash, true_id).expect("cleanup");
     }
 }
 
-/// Load file content from {TMPDIR}/anchorscope/{file_hash}/content.
-pub fn load_file_content(file_hash: &str) -> Result<Vec<u8>, String> {
-    let path = buffer_path::file_dir(file_hash).join("content");
-    fs::read(&path)
-        .map_err(|e| io_error_to_spec(e, "read failure"))
-}
+
 
 /// Load source path from {TMPDIR}/anchorscope/{file_hash}/source_path.
 pub fn load_source_path(file_hash: &str) -> Result<String, String> {
@@ -405,19 +350,20 @@ pub fn load_source_path(file_hash: &str) -> Result<String, String> {
 
 /// Load anchor metadata with True ID from {TMPDIR}/anchorscope/{file_hash}/{true_id}/metadata.json.
 pub fn load_anchor_metadata_by_true_id(true_id: &str) -> Result<AnchorMeta, String> {
-    // First check old location (v1.1.0 compatibility) - at {anchorscope_dir}/anchors/
     let temp_dir = std::env::temp_dir();
-    let anchors_dir = temp_dir.join("anchorscope").join("anchors");
-    let path = anchors_dir.join(format!("{}.json", true_id));
-    if path.exists() {
-        let content = fs::read_to_string(&path)
-            .map_err(|e| io_error_to_spec(e, "read failure"))?;
-        return serde_json::from_str(&content)
-            .map_err(|e| format!("IO_ERROR: anchor metadata corrupted: {}", e));
+    let anchorscope_dir = temp_dir.join("anchorscope");
+    
+    // First, count how many times this true_id appears across all file_hash directories
+    let mut found_locations: Vec<PathBuf> = Vec::new();
+    
+    // Check old location (v1.1.0 compatibility)
+    let anchors_dir = anchorscope_dir.join("anchors");
+    let old_path = anchors_dir.join(format!("{}.json", true_id));
+    if old_path.exists() {
+        found_locations.push(anchors_dir.clone());
     }
     
     // Search all buffer locations recursively
-    let anchorscope_dir = temp_dir.join("anchorscope");
     if let Ok(entries) = std::fs::read_dir(&anchorscope_dir) {
         for entry in entries.flatten() {
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
@@ -429,14 +375,73 @@ pub fn load_anchor_metadata_by_true_id(true_id: &str) -> Result<AnchorMeta, Stri
                 }
                 
                 // Search for true_id recursively in this file_hash
-                if let Some(meta) = search_true_id_in_dir(&file_hash_str, true_id) {
-                    return meta;
+                if find_true_id_in_dir_recursive(&buffer_path::file_dir(&file_hash_str), true_id) {
+                    found_locations.push(buffer_path::file_dir(&file_hash_str));
                 }
             }
         }
     }
     
+    // Check for duplicates (ambiguous anchor)
+    if found_locations.len() > 1 {
+        let locations_str: Vec<String> = found_locations.iter().map(|p| p.display().to_string()).collect();
+        return Err(format!(
+            "ERROR: Ambiguous anchor detection - same true_id '{}' found in multiple locations: {}",
+            true_id,
+            locations_str.join(", ")
+        ));
+    }
+    
+    // Find the location and return metadata
+    if found_locations.is_empty() {
+        return Err(format!("IO_ERROR: anchor metadata for true_id '{}' not found", true_id));
+    }
+    
+    let location = &found_locations[0];
+    
+    // Check if it's the old location (v1.1.0 compatibility)
+    if location.ends_with("anchors") {
+        let content = fs::read_to_string(location.join(format!("{}.json", true_id)))
+            .map_err(|e| io_error_to_spec(e, "read failure"))?;
+        return serde_json::from_str(&content)
+            .map_err(|e| format!("IO_ERROR: anchor metadata corrupted: {}", e));
+    }
+    
+    // Search in the buffer location
+    let file_hash = location.file_name().unwrap().to_string_lossy().to_string();
+    if let Some(meta) = search_true_id_in_dir(&file_hash, true_id) {
+        return meta;
+    }
+    
     Err(format!("IO_ERROR: anchor metadata for true_id '{}' not found", true_id))
+}
+
+/// Recursively search for a true_id in the directory tree using BFS.
+/// Returns true if found (at least one match).
+fn find_true_id_in_dir_recursive(dir: &Path, target_true_id: &str) -> bool {
+    use std::collections::VecDeque;
+    
+    let mut queue = VecDeque::new();
+    queue.push_back(dir.to_path_buf());
+    
+    while let Some(current_dir) = queue.pop_front() {
+        // Check if {current_dir}/{target_true_id}/content exists
+        let content_path = current_dir.join(target_true_id).join("content");
+        if content_path.exists() {
+            return true;
+        }
+        
+        // Add all subdirectories to the queue
+        if let Ok(entries) = std::fs::read_dir(&current_dir) {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    queue.push_back(entry.path());
+                }
+            }
+        }
+    }
+    
+    false
 }
 
 /// Search for a true_id in the buffer directory tree using BFS.
@@ -490,73 +495,9 @@ fn load_anchor_meta_from_buffer(file_hash: &str, buffer_meta: &BufferMeta) -> Re
     })
 }
 
-/// Debug: print all buffer contents
-pub fn print_all_buffers() {
-    let temp_dir = std::env::temp_dir().join("anchorscope");
-    
-    if let Ok(entries) = std::fs::read_dir(&temp_dir) {
-        for entry in entries.flatten() {
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                let file_hash = entry.file_name();
-                let file_hash_str = file_hash.to_string_lossy();
-                
-                // Check {file_hash}/{true_id}/
-                if let Ok(dir_entries) = std::fs::read_dir(buffer_path::file_dir(&file_hash_str)) {
-                    for dir_entry in dir_entries.flatten() {
-                        if dir_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                            let true_id = dir_entry.file_name();
-                            let true_id_str = true_id.to_string_lossy();
-                            
-                            let content_path = buffer_path::true_id_dir(&file_hash_str, &true_id_str).join("content");
-                            let metadata_path = buffer_path::true_id_dir(&file_hash_str, &true_id_str).join("metadata.json");
-                            if content_path.exists() || metadata_path.exists() {
-                                if metadata_path.exists() {
-                                    if let Ok(content) = fs::read_to_string(&metadata_path) {
-                                        if let Ok(_buffer_meta) = serde_json::from_str::<BufferMeta>(&content) {
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
-/// Save anchor metadata with True ID to {TMPDIR}/anchorscope/{file_hash}/{true_id}/content.
-pub fn save_anchor_metadata_with_true_id(meta: &AnchorMeta, true_id: &str, parent_true_id: Option<&str>) -> Result<(), String> {
-    let file = Path::new(&meta.file);
-    let raw = fs::read(file).map_err(|e| io_error_to_spec(e, "read failure"))?;
-    let normalized = crate::matcher::normalize_line_endings(&raw);
-    let file_hash = crate::hash::compute(&normalized);
-    
-    // Save source path
-    let source_path = file
-        .canonicalize()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| meta.file.clone());
-    let source_path_dir = buffer_path::file_dir(&file_hash);
-    ensure_dir(&source_path_dir).map_err(|e| e)?;
-    let source_path_path = source_path_dir.join("source_path");
-    fs::write(&source_path_path, &source_path)
-        .map_err(|e| io_error_to_spec(e, "write failure"))?;
-    
-    // Save content
-    save_buffer_content(&file_hash, true_id, &normalized)?;
-    
-    // Save metadata
-    let buffer_meta = BufferMeta {
-        true_id: true_id.to_string(),
-        parent_true_id: parent_true_id.map(|s| s.to_string()),
-        region_hash: meta.hash.clone(),
-        anchor: meta.anchor.clone(),
-    };
-    save_buffer_metadata(&file_hash, true_id, &buffer_meta)?;
-    
-    Ok(())
-}
+
+
 
 /// Delete anchor metadata from anchors directory.
 pub fn invalidate_anchor(hash: &str) {
@@ -564,17 +505,7 @@ pub fn invalidate_anchor(hash: &str) {
     let _ = fs::remove_file(path);
 }
 
-/// Delete buffer directory and all descendants for a True ID.
-pub fn invalidate_true_id(file_hash: &str, true_id: &str) {
-    let path = buffer_path::true_id_dir(file_hash, true_id);
-    let _ = fs::remove_dir_all(path);
-}
 
-/// Delete buffer directory and all descendants for a nested True ID.
-pub fn invalidate_nested_true_id(file_hash: &str, parent_true_id: &str, true_id: &str) {
-    let path = buffer_path::nested_true_id_dir(file_hash, parent_true_id, true_id);
-    let _ = fs::remove_dir_all(path);
-}
 
 /// Delete buffer directory and all descendants for a True ID hierarchy.
 /// This recursively removes the directory {file_hash}/{true_id} and all nested children.
