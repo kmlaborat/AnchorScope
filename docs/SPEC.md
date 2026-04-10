@@ -13,7 +13,6 @@ AnchorScope v1.2.0 extends v1.1.0 by introducing:
 * **Alias**: optional human-readable name via `label` command
 * **Anchor Buffer**: a structured temporary directory enabling multi-level anchoring
 * **Determinism Enforcement**: fail-fast behavior when duplicate True IDs are detected
-* **Physical Constraints**: maximum nesting depth of 5 levels (configurable via `ANCHORSCOPE_MAX_DEPTH` environment variable)
 
 ---
 
@@ -205,6 +204,16 @@ Properties:
 * Two anchors with identical content but different parents have different True IDs
 * Determined solely by hash values; no file path or anchor string is included
 
+#### Duplicate True ID
+
+Although True ID collisions are statistically rare (xxh3_64 is 64-bit), they are theoretically possible. If the same True ID is found at multiple locations within the buffer, the system **MUST** terminate immediately with:
+
+```
+DUPLICATE_TRUE_ID
+```
+
+This prevents non-deterministic behavior where operations might resolve to the wrong buffer location.
+
 ---
 
 ### 3.3 Alias
@@ -255,6 +264,8 @@ recursive editing without modifying the original file.
 * `true_id` identifies each anchor level
 * `source_path` is stored **only at the root level**
 * `content` files contain normalized UTF-8 text
+
+> **Note:** Deeply nested anchor structures may encounter platform-specific path length limits (e.g., Windows MAX_PATH of 260 characters). Implementations should document any such constraints.
 
 ---
 
@@ -398,30 +409,7 @@ Example output:
 
 ---
 
-### 6.6 Nesting Depth Limitation
-
-To ensure cross-platform compatibility and prevent platform-specific issues (particularly Windows MAX_PATH limits), the maximum nesting depth is **5 levels** by default.
-
-**Environment Variable Override:**
-
-The limit can be overridden via the `ANCHORSCOPE_MAX_DEPTH` environment variable:
-
-* If unset or invalid: defaults to 5
-* If set: uses the specified value (clamped to range [1, 100])
-
-**Warning:**
-
-Using a depth limit greater than 5 levels may cause portability issues:
-* **Windows:** May exceed MAX_PATH limits (260 characters)
-* **Linux/macOS:** May exceed filesystem path limits
-* **Docker/containers:** May have different path resolution
-* **Cross-platform scripts:** May behave differently on different systems
-
-Users who override the default limit assume full responsibility for ensuring determinism and compatibility across target environments.
-
----
-
-### 6.7 Deterministic Error Handling
+### 6.6 Deterministic Error Handling
 
 Allowed outputs:
 
@@ -429,26 +417,14 @@ Allowed outputs:
 NO_MATCH
 MULTIPLE_MATCHES
 HASH_MISMATCH
+DUPLICATE_TRUE_ID
 LABEL_EXISTS
-AMBIGUOUS_ANCHOR
 IO_ERROR: file not found
 IO_ERROR: permission denied
 IO_ERROR: invalid UTF-8
 IO_ERROR: read failure
 IO_ERROR: write failure
 ```
-
----
-
-### 6.7 Determinism Guarantees
-
-To maintain determinism and prevent ambiguous anchor resolution, AnchorScope enforces:
-
-1. **Duplicate True ID Detection**: If the same True ID exists in multiple buffer locations (e.g., due to incomplete cleanup from previous operations), the system **MUST** fail fast with `AMBIGUOUS_ANCHOR` error. This prevents non-deterministic behavior where operations might operate on the wrong buffer.
-
-2. **Maximum Nesting Depth**: To ensure portability across platforms (especially Windows with MAX_PATH limits), the maximum nesting depth for anchors is **5 levels**. Attempting to create a 6th level **MUST** be rejected with `IO_ERROR: maximum nesting depth exceeded`. This constraint ensures the same scripts work identically on all platforms.
-
-3. **Parent Region Hash**: True IDs **MUST** be computed using `parent_region_hash` (the hash of the matched region at the parent level), not `parent_true_id` or file paths. This ensures True IDs are truly derived from content state, not implementation artifacts.
 
 ---
 
@@ -475,8 +451,7 @@ To maintain determinism and prevent ambiguous anchor resolution, AnchorScope enf
 7. The system is fail-fast by design
 8. Zero modification occurs outside the matched region
 9. Normalization is consistent and persistent
-10. Duplicate True IDs trigger immediate failure with `AMBIGUOUS_ANCHOR` error
-11. Maximum nesting depth is 5 levels for cross-platform portability
+10. Duplicate True IDs trigger immediate failure with `DUPLICATE_TRUE_ID`
 
 ---
 
