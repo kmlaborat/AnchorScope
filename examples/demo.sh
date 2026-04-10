@@ -12,7 +12,7 @@ echo "This demo shows how to edit specific code sections when the same pattern"
 echo "appears multiple times in a file."
 echo ""
 
-DEMO_FILE="demo_app.py"
+DEMO_FILE="demo_target.py"
 BIN="./target/debug/anchorscope"
 echo "Target file: $DEMO_FILE"
 echo ""
