@@ -322,6 +322,13 @@ pub fn print_all_buffers() {
                             let metadata_path = buffer_path::true_id_dir(&file_hash_str, &true_id_str).join("metadata.json");
                             if content_path.exists() || metadata_path.exists() {
                                 eprintln!("DEBUG: Found buffer {}/{}", file_hash_str, true_id_str);
+                                if metadata_path.exists() {
+                                    if let Ok(content) = fs::read_to_string(&metadata_path) {
+                                        if let Ok(buffer_meta) = serde_json::from_str::<BufferMeta>(&content) {
+                                            eprintln!("DEBUG:   region_hash: {}", buffer_meta.region_hash);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
