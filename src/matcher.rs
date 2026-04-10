@@ -88,3 +88,86 @@ pub fn resolve(haystack: &[u8], anchor: &[u8]) -> Result<Match, MatchError> {
         n => Err(MatchError::MultipleMatches(n)),
     }
 }
+
+/// Extract function body from Python file.
+/// Returns the full function including the definition line.
+pub fn extract_function_body(content: &[u8], anchor_start: usize, anchor_end: usize) -> Vec<u8> {
+    let normalized = normalize_line_endings(content);
+    let mut start = anchor_start;
+    let mut end = anchor_end;
+    
+    // Find the start of the function definition (look backwards for "def ")
+    let search_start = if start >= 10 { start - 10 } else { 0 };
+    let search_region = &normalized[search_start..start];
+    if let Some(def_pos) = find_reverse(search_region, b"def ") {
+        // Find the beginning of the line containing "def "
+        let actual_def_pos = search_start + def_pos;
+        if actual_def_pos > 0 {
+            // Find the previous newline
+            let prev_newline = normalized[..actual_def_pos].iter().rposition(|&b| b == b'\n');
+            start = prev_newline.map(|p| p + 1).unwrap_or(0);
+        } else {
+            start = actual_def_pos;
+        }
+    }
+    
+    // Find the end of the function (look for next def statement or end of file)
+    let mut current_pos = end;
+    while current_pos < normalized.len() {
+        // Find the next newline
+        let next_newline = normalized[current_pos..].iter().position(|&b| b == b'\n');
+        if next_newline.is_none() {
+            // End of file
+            end = normalized.len();
+            break;
+        }
+        let newline_pos = current_pos + next_newline.unwrap();
+        let line_end = newline_pos + 1;
+        
+        // Check if the next line starts with "def " (next function)
+        let next_line_start = line_end;
+        if next_line_start >= normalized.len() {
+            end = normalized.len();
+            break;
+        }
+        
+        // Skip blank lines and comments
+        let remaining = &normalized[next_line_start..];
+        if !remaining.is_empty() {
+            // Find first non-whitespace character
+            let first_non_ws = remaining.iter().skip_while(|&&b| b == b' ' || b == b'\t' || b == b'\n').position(|&b| b != b'\n');
+            if let Some(pos) = first_non_ws {
+                let check_pos = next_line_start + pos;
+                // Check if line starts with "def "
+                if check_pos + 4 <= normalized.len() && &normalized[check_pos..check_pos + 4] == b"def " {
+                    // Found next function definition, so this is the end of current function
+                    end = current_pos;
+                    break;
+                }
+            }
+        }
+        
+        current_pos = line_end;
+    }
+    
+    normalized[start..end].to_vec()
+}
+
+/// Find the last occurrence of `needle` in `haystack`, returning the byte offset.
+fn find_reverse(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return None;
+    }
+    let limit = haystack.len() - needle.len();
+    let mut i = limit;
+    loop {
+        if haystack[i..i + needle.len()] == *needle {
+            return Some(i);
+        }
+        if i == 0 {
+            break;
+        }
+        i -= 1;
+    }
+    None
+}

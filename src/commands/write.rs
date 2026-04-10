@@ -11,18 +11,22 @@ pub fn execute(
 ) -> i32 {
     // Resolve file, anchor_bytes, expected_hash, and track label for cleanup
     let (target_file, anchor_bytes, expected_hash, used_label): (String, Vec<u8>, String, Option<String>) = if let Some(label_name) = label {
-        // Label mode: resolve internal label -> anchor metadata
-        let internal_label = match crate::storage::load_label_target(label_name) {
-            Ok(l) => l,
+        // Label mode: resolve label -> true_id -> anchor metadata
+        let true_id = match crate::storage::load_label_target(label_name) {
+            Ok(tid) => tid,
             Err(e) => {
                 eprintln!("{}", e);
                 return 1;
             }
         };
-        let meta = match crate::storage::load_anchor_metadata(&internal_label) {
+        let meta = match crate::storage::load_anchor_metadata_by_true_id(&true_id) {
             Ok(m) => m,
             Err(e) => {
                 eprintln!("{}", e);
+                eprintln!("DEBUG: true_id = {}", true_id);
+                eprintln!("DEBUG: Searching for buffers...");
+                crate::storage::print_all_buffers();
+                eprintln!("DEBUG: done searching");
                 return 1;
             }
         };

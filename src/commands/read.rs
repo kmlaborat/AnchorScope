@@ -42,11 +42,12 @@ pub fn execute(
             }
         };
         
-        // Load file content from {file_hash}/content (the full file for nested anchors)
-        let buffer_content = match storage::load_file_content(&file_hash) {
+        // Load buffer content from {file_hash}/{true_id}/content (the matched region for nested anchors)
+        // For v1.2.0, Level-2 anchors use true_id as the direct buffer reference
+        let buffer_content = match storage::load_buffer_content(&file_hash, &true_id) {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("IO_ERROR: cannot load file content: {}", e);
+                eprintln!("IO_ERROR: cannot load buffer content: {}", e);
                 return 1;
             }
         };
@@ -131,11 +132,12 @@ pub fn execute(
             println!("content={}", String::from_utf8_lossy(region));
             
             // Save anchor metadata per SPEC (v1.1.0 compatibility)
-            let anchor_str = String::from_utf8_lossy(&anchor_bytes_normalized).to_string();
+            let anchor_str_base = String::from_utf8_lossy(&anchor_bytes_normalized);
+            let anchor_str = anchor_str_base.to_string();
             let file_path = target_file.clone();
             let meta = storage::AnchorMeta {
                 file: file_path,
-                anchor: anchor_str,
+                anchor: anchor_str_base.to_string(),
                 hash: h.clone(),
                 line_range: (m.start_line, m.end_line),
             };
@@ -158,8 +160,27 @@ pub fn execute(
             }
             
             // Save matched region content to {file_hash}/{true_id}/content
-            if let Err(e) = storage::save_region_content(&file_hash, &true_id, region) {
+            // For function definitions, save the full function body
+            let buffer_to_save = if anchor_str.starts_with("def ") {
+                // Extract full function body for Python function definitions
+                crate::matcher::extract_function_body(&normalized, m.byte_start, m.byte_end)
+            } else {
+                region.to_vec()
+            };
+            
+            if let Err(e) = storage::save_region_content(&file_hash, &true_id, &buffer_to_save) {
                 eprintln!("IO_ERROR: cannot save region content: {}", e);
+                return 1;
+            }
+            
+            // Save buffer metadata
+            let buffer_meta = storage::BufferMeta {
+                true_id: true_id.clone(),
+                parent_true_id: parent_true_id.clone(),
+                region_hash: h.clone(),
+            };
+            if let Err(e) = storage::save_buffer_metadata(&file_hash, &true_id, &buffer_meta) {
+                eprintln!("IO_ERROR: cannot save buffer metadata: {}", e);
                 return 1;
             }
             
