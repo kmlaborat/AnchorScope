@@ -1,5 +1,4 @@
 use crate::buffer_path;
-use crate::storage;
 use std::path::PathBuf;
 
 /// Tree: Display current buffer structure.

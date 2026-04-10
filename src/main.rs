@@ -1,6 +1,7 @@
 mod buffer_path;
 mod cli;
 mod commands;
+mod config;
 mod hash;
 mod matcher;
 mod storage;

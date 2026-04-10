@@ -1,6 +1,7 @@
 use std::fs;
 use crate::storage;
 use crate::buffer_path;
+use crate::config;
 
 /// Read: locate anchor, print location + hash. Exit 0 on success, 1 on error.
 /// If target is a buffer copy (file_hash/content or file_hash/true_id/content),
@@ -124,6 +125,25 @@ pub fn execute(
             // This ensures the file_hash is consistent regardless of label mode
             let file_hash = crate::hash::compute(&raw);
             
+            // Check nesting depth limit when in label mode
+            if label.is_some() {
+                if let Some((ref _ref_buffer_content, ref parent_tid)) = buffer_parent_true_id {
+                    let max_depth = config::max_depth();
+                    match calculate_nesting_depth(parent_tid, &file_hash) {
+                        Ok(depth) => {
+                            if depth >= max_depth {
+                                eprintln!("IO_ERROR: maximum nesting depth ({}) exceeded", max_depth);
+                                return 1;
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("{}", e);
+                            return 1;
+                        }
+                    }
+                }
+            }
+            
             // Compute True ID with parent context if nested
             let (true_id, parent_true_id) = if let Some((_ref_buffer_content, parent_tid)) = buffer_parent_true_id {
                 // Load parent buffer metadata to obtain its region hash
@@ -184,43 +204,53 @@ pub fn execute(
             if let Some(ref parent_true_id) = parent_true_id {
                 // Nested read: save to nested location ONLY
                 // Find the parent's directory path (could be flat or nested)
-                let parent_dir = storage::find_true_id_dir(&file_hash, parent_true_id)
-                    .unwrap_or_else(|| buffer_path::true_id_dir(&file_hash, parent_true_id));
-                
-                // Build the full nested path: {parent_dir}/{true_id}
-                let nested_dir = parent_dir.join(&true_id);
-                
-                // Ensure the directory exists
-                if let Err(e) = std::fs::create_dir_all(&nested_dir) {
-                    eprintln!("IO_ERROR: cannot create directory {}: {}", nested_dir.display(), e);
-                    return 1;
-                }
-                
-                // Save content
-                let content_path = nested_dir.join("content");
-                if let Err(e) = std::fs::write(&content_path, &buffer_to_save) {
-                    eprintln!("IO_ERROR: cannot write {}: {}", content_path.display(), e);
-                    return 1;
-                }
-                
-                // Save metadata
-                let metadata_path = nested_dir.join("metadata.json");
-                let buffer_meta = storage::BufferMeta {
-                    true_id: true_id.clone(),
-                    parent_true_id: Some(parent_true_id.clone()),  // Store parent for hierarchy
-                    region_hash: h.clone(),
-                    anchor: anchor_str_base.to_string(),
-                };
-                let json = match serde_json::to_string_pretty(&buffer_meta) {
-                    Ok(j) => j,
-                    Err(e) => {
-                        eprintln!("IO_ERROR: JSON serialization failed: {}", e);
+                match storage::find_true_id_dir(&file_hash, parent_true_id) {
+                    Ok(Some(parent_dir)) => {
+                        // Build the full nested path: {parent_dir}/{true_id}
+                        let nested_dir = parent_dir.join(&true_id);
+                        
+                        // Ensure the directory exists
+                        if let Err(e) = std::fs::create_dir_all(&nested_dir) {
+                            eprintln!("IO_ERROR: cannot create directory {}: {}", nested_dir.display(), e);
+                            return 1;
+                        }
+                        
+                        // Save content
+                        let content_path = nested_dir.join("content");
+                        if let Err(e) = std::fs::write(&content_path, &buffer_to_save) {
+                            eprintln!("IO_ERROR: cannot write {}: {}", content_path.display(), e);
+                            return 1;
+                        }
+                        
+                        // Save metadata
+                        let metadata_path = nested_dir.join("metadata.json");
+                        let buffer_meta = storage::BufferMeta {
+                            true_id: true_id.clone(),
+                            parent_true_id: Some(parent_true_id.clone()),  // Store parent for hierarchy
+                            region_hash: h.clone(),
+                            anchor: anchor_str_base.to_string(),
+                        };
+                        let json = match serde_json::to_string_pretty(&buffer_meta) {
+                            Ok(j) => j,
+                            Err(e) => {
+                                eprintln!("IO_ERROR: JSON serialization failed: {}", e);
+                                return 1;
+                            }
+                        };
+                        if let Err(e) = std::fs::write(&metadata_path, &json) {
+                            eprintln!("IO_ERROR: cannot write {}: {}", metadata_path.display(), e);
+                            return 1;
+                        }
+                    }
+                    Ok(None) => {
+                        eprintln!("IO_ERROR: parent directory for true_id '{}' not found", parent_true_id);
                         return 1;
                     }
-                };;
-                if let Err(e) = std::fs::write(&metadata_path, &json) {
-                    eprintln!("IO_ERROR: cannot write {}: {}", metadata_path.display(), e);
-                    return 1;
+                    Err(storage::AmbiguousAnchorError { true_id: tid, locations }) => {
+                        let loc_str: Vec<String> = locations.iter().map(|p| p.display().to_string()).collect();
+                        eprintln!("ERROR: Ambiguous anchor detection for parent true_id '{}': same ID found in multiple locations: {}", tid, loc_str.join(", "));
+                        return 1;
+                    }
                 }
             } else {
                 // Level-1: save to flat location
@@ -316,6 +346,36 @@ fn find_file_hash_for_true_id(true_id: &str) -> Option<String> {
     }
     
     None
+}
+
+/// Calculate the nesting depth for a given true_id by tracing its parent chain
+/// Returns the depth (0 for level-1, 1 for level-2, etc.)
+fn calculate_nesting_depth(true_id: &str, file_hash: &str) -> Result<usize, String> {
+    use std::collections::VecDeque;
+    
+    // BFS search to find the true_id and count nesting depth
+    let file_dir = buffer_path::file_dir(file_hash);
+    let mut queue = VecDeque::new();
+    queue.push_back((file_dir, 0)); // (directory, depth)
+    
+    while let Some((current_dir, depth)) = queue.pop_front() {
+        // Check if {current_dir}/{true_id}/content exists
+        let content_path = current_dir.join(true_id).join("content");
+        if content_path.exists() {
+            return Ok(depth);
+        }
+        
+        // Add all subdirectories to the queue with incremented depth
+        if let Ok(entries) = std::fs::read_dir(&current_dir) {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    queue.push_back((entry.path(), depth + 1));
+                }
+            }
+        }
+    }
+    
+    Err(format!("IO_ERROR: buffer metadata for true_id '{}' not found", true_id))
 }
 
 #[cfg(test)]

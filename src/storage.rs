@@ -3,6 +3,13 @@ use std::fs;
 use serde::{Serialize, Deserialize};
 use crate::buffer_path;
 
+/// Error type for ambiguous anchor detection.
+/// Raised when the same true_id exists in multiple locations, violating determinism.
+pub struct AmbiguousAnchorError {
+    pub true_id: String,
+    pub locations: Vec<PathBuf>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AnchorMeta {
     pub file: String,
@@ -165,33 +172,44 @@ pub fn save_buffer_metadata(file_hash: &str, true_id: &str, meta: &BufferMeta) -
 
 /// Find the directory path for a given true_id (could be flat or nested).
 /// Returns the path to the directory containing the true_id's content.
-pub fn find_true_id_dir(file_hash: &str, true_id: &str) -> Option<PathBuf> {
-    // First check flat location: {file_hash}/{true_id}/
-    let flat_path = buffer_path::true_id_dir(file_hash, true_id);
-    if flat_path.join("content").exists() || flat_path.join("metadata.json").exists() {
-        return Some(flat_path);
-    }
+/// Returns Err(AmbiguousAnchorError) if the same true_id exists in multiple locations.
+pub fn find_true_id_dir(file_hash: &str, true_id: &str) -> Result<Option<PathBuf>, AmbiguousAnchorError> {
+    use std::collections::VecDeque;
     
-    // Check nested locations: {file_hash}/{parent}/{true_id}/
+    let mut found_paths: Vec<PathBuf> = Vec::new();
     let file_dir = buffer_path::file_dir(file_hash);
-    if let Ok(entries) = std::fs::read_dir(&file_dir) {
-        for entry in entries.flatten() {
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                let parent_true_id = entry.file_name();
-                let parent_true_id_str = parent_true_id.to_string_lossy();
-                let nested_path = buffer_path::nested_true_id_dir(
-                    file_hash,
-                    &parent_true_id_str,
-                    true_id
-                );
-                if nested_path.join("content").exists() || nested_path.join("metadata.json").exists() {
-                    return Some(nested_path);
+    
+    // BFS search to find all locations of this true_id
+    let mut queue = VecDeque::new();
+    queue.push_back(file_dir.clone());
+    
+    while let Some(current_dir) = queue.pop_front() {
+        // Check if {current_dir}/{true_id}/ exists
+        let target_dir = current_dir.join(true_id);
+        
+        if target_dir.join("content").exists() || target_dir.join("metadata.json").exists() {
+            found_paths.push(target_dir.clone());
+            
+            // If we found more than one, it's ambiguous
+            if found_paths.len() > 1 {
+                return Err(AmbiguousAnchorError {
+                    true_id: true_id.to_string(),
+                    locations: found_paths,
+                });
+            }
+        }
+        
+        // Add all subdirectories to the queue
+        if let Ok(entries) = std::fs::read_dir(&current_dir) {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    queue.push_back(entry.path());
                 }
             }
         }
     }
     
-    None
+    Ok(if found_paths.is_empty() { None } else { Some(found_paths[0].clone()) })
 }
 
 /// Find file_hash containing a given true_id by searching all buffer directories
@@ -208,7 +226,8 @@ pub fn find_file_hash_for_true_id(true_id: &str) -> Option<String> {
                 
                 // Use BFS to search all nested locations for this true_id
                 let file_dir = buffer_path::file_dir(&file_hash_str);
-                if file_hash_exists_in_dir(&file_dir, true_id) {
+                let (found, _count) = file_hash_exists_in_dir_with_count(&file_dir, true_id);
+                if found {
                     return Some(file_hash_str.to_string());
                 }
             }
@@ -219,9 +238,11 @@ pub fn find_file_hash_for_true_id(true_id: &str) -> Option<String> {
 }
 
 /// Check if true_id exists in the directory tree.
-fn file_hash_exists_in_dir(dir: &Path, true_id: &str) -> bool {
+/// Returns (found, count) where count is the number of matching directories.
+fn file_hash_exists_in_dir_with_count(dir: &Path, true_id: &str) -> (bool, usize) {
     use std::collections::VecDeque;
     
+    let mut count = 0;
     let mut queue = VecDeque::new();
     queue.push_back(dir.to_path_buf());
     
@@ -229,7 +250,10 @@ fn file_hash_exists_in_dir(dir: &Path, true_id: &str) -> bool {
         // Check if {current_dir}/{true_id}/content exists
         let content_path = current_dir.join(true_id).join("content");
         if content_path.exists() {
-            return true;
+            count += 1;
+            if count > 1 {
+                return (true, count); // Ambiguous
+            }
         }
         
         // Add all subdirectories to the queue
@@ -242,13 +266,58 @@ fn file_hash_exists_in_dir(dir: &Path, true_id: &str) -> bool {
         }
     }
     
-    false
+    (count > 0, count)
 }
 
-/// Return the file hash for a given True ID, or error if not found.
+/// Find file_hash containing a given true_id by searching all buffer directories.
+/// Returns error if true_id exists in multiple file_hash directories (ambiguous).
+fn find_file_hash_for_true_id_with_dup_check(true_id: &str) -> Result<Option<String>, AmbiguousAnchorError> {
+    let temp_dir = std::env::temp_dir();
+    let anchorscope_dir = temp_dir.join("anchorscope");
+    
+    let mut found_hashes: Vec<String> = Vec::new();
+    
+    // Search all file_hash directories
+    if let Ok(entries) = std::fs::read_dir(&anchorscope_dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                let file_hash = entry.file_name();
+                let file_hash_str = file_hash.to_string_lossy();
+                
+                let file_dir = buffer_path::file_dir(&file_hash_str);
+                let (found, _count) = file_hash_exists_in_dir_with_count(&file_dir, true_id);
+                
+                if found {
+                    found_hashes.push(file_hash_str.to_string());
+                    
+                    // If we found the same true_id in multiple file_hash directories, it's ambiguous
+                    if found_hashes.len() > 1 {
+                        return Err(AmbiguousAnchorError {
+                            true_id: true_id.to_string(),
+                            locations: found_hashes.iter().map(|h| buffer_path::file_dir(h)).collect(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(if found_hashes.is_empty() { None } else { Some(found_hashes[0].clone()) })
+}
+
+/**
+ * Return the file hash for a given True ID, or error if not found.
+ * Returns AmbiguousAnchorError if the same true_id exists in multiple file_hash directories.
+ */
 pub fn file_hash_for_true_id(true_id: &str) -> Result<String, String> {
-    find_file_hash_for_true_id(true_id)
-        .ok_or_else(|| format!("IO_ERROR: file hash for True ID '{}' not found", true_id))
+    match find_file_hash_for_true_id_with_dup_check(true_id) {
+        Ok(Some(hash)) => Ok(hash),
+        Ok(None) => Err(format!("IO_ERROR: file hash for True ID '{}' not found", true_id)),
+        Err(AmbiguousAnchorError { true_id: tid, locations }) => {
+            let locations_str: Vec<String> = locations.iter().map(|p| p.display().to_string()).collect();
+            Err(format!("ERROR: Ambiguous anchor detection - same true_id '{}' found in multiple file_hash directories: {}", tid, locations_str.join(", ")))
+        }
+    }
 }
 
 /// Load buffer content from {TMPDIR}/anchorscope/{file_hash}/{true_id}/content or nested location.
@@ -272,16 +341,10 @@ pub fn load_buffer_content(file_hash: &str, true_id: &str) -> Result<Vec<u8>, St
 
 /// Load buffer metadata from {TMPDIR}/anchorscope/{file_hash}/{true_id}/metadata.json or nested location.
 pub fn load_buffer_metadata(file_hash: &str, true_id: &str) -> Result<BufferMeta, String> {
-    // Use BFS to search all nested locations
-    let file_dir = buffer_path::file_dir(file_hash);
-    
-    use std::collections::VecDeque;
-    let mut queue = VecDeque::new();
-    queue.push_back(file_dir);
-    
-    while let Some(current_dir) = queue.pop_front() {
-        let nested_metadata_path = current_dir.join(true_id).join("metadata.json");
-        if nested_metadata_path.exists() {
+    // Use find_true_id_dir which also detects duplicates
+    match find_true_id_dir(file_hash, true_id) {
+        Ok(Some(dir_path)) => {
+            let nested_metadata_path = dir_path.join("metadata.json");
             let content = fs::read_to_string(&nested_metadata_path)
                 .map_err(|e| io_error_to_spec(e, "read failure"))?;
             let meta: BufferMeta = serde_json::from_str(&content)
@@ -291,19 +354,17 @@ pub fn load_buffer_metadata(file_hash: &str, true_id: &str) -> Result<BufferMeta
             if meta.true_id == true_id || meta.region_hash == true_id {
                 return Ok(meta);
             }
+            
+            Err(io_error_to_spec(std::io::Error::new(std::io::ErrorKind::NotFound, "metadata.json"), "file not found"))
         }
-        
-        // Add all subdirectories to the queue
-        if let Ok(entries) = std::fs::read_dir(&current_dir) {
-            for entry in entries.flatten() {
-                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                    queue.push_back(entry.path());
-                }
-            }
+        Ok(None) => {
+            Err(io_error_to_spec(std::io::Error::new(std::io::ErrorKind::NotFound, "metadata.json"), "file not found"))
+        }
+        Err(AmbiguousAnchorError { true_id: tid, locations }) => {
+            let locations_str: Vec<String> = locations.iter().map(|p| p.display().to_string()).collect();
+            Err(format!("ERROR: Ambiguous anchor detection - same true_id '{}' found in multiple locations: {}", tid, locations_str.join(", ")))
         }
     }
-    
-    Err(io_error_to_spec(std::io::Error::new(std::io::ErrorKind::NotFound, "metadata.json"), "file not found"))
 }
 
 #[cfg(test)]
@@ -451,7 +512,7 @@ pub fn print_all_buffers() {
                             if content_path.exists() || metadata_path.exists() {
                                 if metadata_path.exists() {
                                     if let Ok(content) = fs::read_to_string(&metadata_path) {
-                                        if let Ok(buffer_meta) = serde_json::from_str::<BufferMeta>(&content) {
+                                        if let Ok(_buffer_meta) = serde_json::from_str::<BufferMeta>(&content) {
                                         }
                                     }
                                 }

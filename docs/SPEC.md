@@ -12,6 +12,8 @@ AnchorScope v1.2.0 extends v1.1.0 by introducing:
 * **True ID**: hash-based unique identity for every anchor
 * **Alias**: optional human-readable name via `label` command
 * **Anchor Buffer**: a structured temporary directory enabling multi-level anchoring
+* **Determinism Enforcement**: fail-fast behavior when duplicate True IDs are detected
+* **Physical Constraints**: maximum nesting depth of 5 levels (configurable via `ANCHORSCOPE_MAX_DEPTH` environment variable)
 
 ---
 
@@ -396,7 +398,30 @@ Example output:
 
 ---
 
-### 6.6 Deterministic Error Handling
+### 6.6 Nesting Depth Limitation
+
+To ensure cross-platform compatibility and prevent platform-specific issues (particularly Windows MAX_PATH limits), the maximum nesting depth is **5 levels** by default.
+
+**Environment Variable Override:**
+
+The limit can be overridden via the `ANCHORSCOPE_MAX_DEPTH` environment variable:
+
+* If unset or invalid: defaults to 5
+* If set: uses the specified value (clamped to range [1, 100])
+
+**Warning:**
+
+Using a depth limit greater than 5 levels may cause portability issues:
+* **Windows:** May exceed MAX_PATH limits (260 characters)
+* **Linux/macOS:** May exceed filesystem path limits
+* **Docker/containers:** May have different path resolution
+* **Cross-platform scripts:** May behave differently on different systems
+
+Users who override the default limit assume full responsibility for ensuring determinism and compatibility across target environments.
+
+---
+
+### 6.7 Deterministic Error Handling
 
 Allowed outputs:
 
@@ -405,12 +430,25 @@ NO_MATCH
 MULTIPLE_MATCHES
 HASH_MISMATCH
 LABEL_EXISTS
+AMBIGUOUS_ANCHOR
 IO_ERROR: file not found
 IO_ERROR: permission denied
 IO_ERROR: invalid UTF-8
 IO_ERROR: read failure
 IO_ERROR: write failure
 ```
+
+---
+
+### 6.7 Determinism Guarantees
+
+To maintain determinism and prevent ambiguous anchor resolution, AnchorScope enforces:
+
+1. **Duplicate True ID Detection**: If the same True ID exists in multiple buffer locations (e.g., due to incomplete cleanup from previous operations), the system **MUST** fail fast with `AMBIGUOUS_ANCHOR` error. This prevents non-deterministic behavior where operations might operate on the wrong buffer.
+
+2. **Maximum Nesting Depth**: To ensure portability across platforms (especially Windows with MAX_PATH limits), the maximum nesting depth for anchors is **5 levels**. Attempting to create a 6th level **MUST** be rejected with `IO_ERROR: maximum nesting depth exceeded`. This constraint ensures the same scripts work identically on all platforms.
+
+3. **Parent Region Hash**: True IDs **MUST** be computed using `parent_region_hash` (the hash of the matched region at the parent level), not `parent_true_id` or file paths. This ensures True IDs are truly derived from content state, not implementation artifacts.
 
 ---
 
@@ -437,6 +475,8 @@ IO_ERROR: write failure
 7. The system is fail-fast by design
 8. Zero modification occurs outside the matched region
 9. Normalization is consistent and persistent
+10. Duplicate True IDs trigger immediate failure with `AMBIGUOUS_ANCHOR` error
+11. Maximum nesting depth is 5 levels for cross-platform portability
 
 ---
 
