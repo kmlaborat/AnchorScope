@@ -28,3 +28,5 @@ mod validation_order_tests;
 mod label_command_tests;
 #[cfg(test)]
 mod storage_lifecycle_tests;
+#[cfg(test)]
+mod single_chain_buffer_structure;

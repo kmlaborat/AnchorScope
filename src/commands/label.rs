@@ -20,7 +20,7 @@ pub fn execute(name: &str, true_id: &str) -> i32 {
     // Check old location first (v1.1.0 compatibility)
     let exists_in_old_location = true_id_json.exists();
     
-    // If not found, check new buffer locations
+    // If not found, check new buffer locations (including nested structures)
     let exists_in_new_location = if exists_in_old_location {
         true
     } else if let Ok(entries) = std::fs::read_dir(&temp_dir) {
@@ -29,17 +29,56 @@ pub fn execute(name: &str, true_id: &str) -> i32 {
             .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
             .any(|e| {
                 let file_hash_dir = e.path();
-                let true_id_dir = file_hash_dir.join(true_id);
-                let content_path = true_id_dir.join("content");
-                eprintln!("DEBUG label: checking {}", content_path.display());
-                content_path.exists()
+                
+                // Check flat: {file_hash}/{true_id}/content
+                let flat_content_path = file_hash_dir.join(true_id).join("content");
+                if flat_content_path.exists() {
+                    return true;
+                }
+                
+                // Recursively search all subdirectories for {true_id}/content
+                // We need to find any directory named {true_id} that contains a content file
+                if let Ok(dir_entries) = std::fs::read_dir(&file_hash_dir) {
+                    for entry in dir_entries.flatten() {
+                        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                            let subdir_name = entry.file_name().to_string_lossy().to_string();
+                            let subdir_path = file_hash_dir.join(&subdir_name);
+                            
+                            // Recursively search in this subdirectory
+                            if find_true_id_in_dir(&subdir_path, true_id) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                
+                false
             });
-        eprintln!("DEBUG label: found={}", found);
         found
     } else {
-        eprintln!("DEBUG label: cannot read temp_dir");
         false
     };
+
+/// Recursively search for {true_id}/content in a directory tree
+fn find_true_id_in_dir(dir: &std::path::Path, true_id: &str) -> bool {
+    let content_path = dir.join(true_id).join("content");
+    if content_path.exists() {
+        return true;
+    }
+    
+    // Recursively search subdirectories
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                if find_true_id_in_dir(&entry.path(), true_id) {
+                    return true;
+                }
+            }
+        }
+    }
+    
+    false
+}
     
     if !exists_in_old_location && !exists_in_new_location {
         eprintln!("IO_ERROR: buffer metadata for true_id '{}' not found", true_id);

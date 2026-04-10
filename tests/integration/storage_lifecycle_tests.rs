@@ -36,14 +36,14 @@ fn test_write_using_label_invalidates_files() {
     ]);
     assert!(out.status.success());
     let result = parse_output(&String::from_utf8_lossy(&out.stdout));
-    let internal_label = result.get("label").unwrap().clone();
+    let label_hash = result.get("label").unwrap().clone();  // The label is the region hash for v1.1.0 compat
 
     let label_out = run_anchorscope(&[
-        "label", "--name", "greet", "--true-id", &internal_label
+        "label", "--name", "greet", "--true-id", &label_hash
     ]);
     assert!(label_out.status.success());
 
-    let anchor_file = anchorscope_temp_dir().join("anchors").join(format!("{}.json", internal_label));
+    let anchor_file = anchorscope_temp_dir().join("anchors").join(format!("{}.json", label_hash));
     let label_file = anchorscope_temp_dir().join("labels").join("greet.json");
 
     assert!(anchor_file.exists());
@@ -54,7 +54,10 @@ fn test_write_using_label_invalidates_files() {
         "--replacement", "Hi",
         "--file", file_path.to_str().unwrap()
     ]);
-    assert!(write_out.status.success());
+    assert!(write_out.status.success(), "write failed: {}", String::from_utf8_lossy(&write_out.stderr));
+
+    let anchor_file = anchorscope_temp_dir().join("anchors").join(format!("{}.json", label_hash));
+    let label_file = anchorscope_temp_dir().join("labels").join("greet.json");
 
     assert!(!anchor_file.exists(), "anchor file should be invalidated after write");
     assert!(!label_file.exists(), "label file should be invalidated after write");

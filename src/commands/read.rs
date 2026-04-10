@@ -42,13 +42,20 @@ pub fn execute(
             }
         };
         
-        // Load buffer content from {file_hash}/{true_id}/content (the matched region for nested anchors)
-        // For v1.2.0, Level-2 anchors use true_id as the direct buffer reference
+        // Load buffer content from nested location if applicable
+        // The content might be at {file_hash}/{true_id}/content (flat) or {file_hash}/{parent}/{true_id}/content (nested)
         let buffer_content = match storage::load_buffer_content(&file_hash, &true_id) {
             Ok(c) => c,
-            Err(e) => {
-                eprintln!("IO_ERROR: cannot load buffer content: {}", e);
-                return 1;
+            Err(_) => {
+                // Try nested location - find the parent that contains this true_id
+                let content = match find_nested_buffer_content(&file_hash, &true_id) {
+                    Some(c) => c,
+                    None => {
+                        eprintln!("IO_ERROR: cannot load buffer content");
+                        return 1;
+                    }
+                };
+                content
             }
         };
         
@@ -113,13 +120,19 @@ pub fn execute(
             let region = &normalized[m.byte_start..m.byte_end];
             let h = crate::hash::compute(region);
             
-            // Compute file_hash and true_id first (needed for buffer save)
-            let file_hash = crate::hash::compute(&normalized);
+            // Compute file_hash from the raw file content (not buffer content)
+            // This ensures the file_hash is consistent regardless of label mode
+            let file_hash = crate::hash::compute(&raw);
             
             // Compute True ID with parent context if nested
-            let (true_id, parent_true_id) = if let Some((ref buffer_content, parent_tid)) = buffer_parent_true_id {
-                let region_hash = crate::hash::compute(buffer_content);
-                (crate::hash::compute(format!("{}_{}", parent_tid, region_hash).as_bytes()), Some(parent_tid.to_string()))
+            let (true_id, parent_true_id) = if let Some((_ref_buffer_content, parent_tid)) = buffer_parent_true_id {
+                // Load parent buffer metadata to obtain its region hash
+                let parent_region_hash = match storage::load_buffer_metadata(&file_hash, &parent_tid) {
+                    Ok(meta) => meta.region_hash,
+                    Err(_) => parent_tid.clone(), // fallback to parent true_id if metadata missing
+                };
+                let region_hash = crate::hash::compute(region);
+                (crate::hash::compute(format!("{}_{}", parent_region_hash, region_hash).as_bytes()), Some(parent_tid.clone()))
             } else {
                 let region_hash = crate::hash::compute(region);
                 (crate::hash::compute(format!("{}_{}", file_hash, region_hash).as_bytes()), None)
@@ -130,6 +143,7 @@ pub fn execute(
             println!("end_line={}", m.end_line);
             println!("hash={}", h);
             println!("content={}", String::from_utf8_lossy(region));
+            println!("true_id={}", &true_id);
             
             // Save anchor metadata per SPEC (v1.1.0 compatibility)
             let anchor_str_base = String::from_utf8_lossy(&anchor_bytes_normalized);
@@ -159,8 +173,7 @@ pub fn execute(
                 return 1;
             }
             
-            // Save matched region content to {file_hash}/{true_id}/content
-            // For function definitions, save the full function body
+            // Save matched region content
             let buffer_to_save = if anchor_str.starts_with("def ") {
                 // Extract full function body for Python function definitions
                 crate::matcher::extract_function_body(&normalized, m.byte_start, m.byte_end)
@@ -168,26 +181,63 @@ pub fn execute(
                 region.to_vec()
             };
             
-            if let Err(e) = storage::save_region_content(&file_hash, &true_id, &buffer_to_save) {
-                eprintln!("IO_ERROR: cannot save region content: {}", e);
-                return 1;
-            }
-            
-            // Save buffer metadata
-            let buffer_meta = storage::BufferMeta {
-                true_id: true_id.clone(),
-                parent_true_id: parent_true_id.clone(),
-                region_hash: h.clone(),
-            };
-            if let Err(e) = storage::save_buffer_metadata(&file_hash, &true_id, &buffer_meta) {
-                eprintln!("IO_ERROR: cannot save buffer metadata: {}", e);
-                return 1;
-            }
-            
-            // For nested reads, save to nested location
             if let Some(ref parent_true_id) = parent_true_id {
-                if let Err(e) = storage::save_nested_buffer_content(&file_hash, parent_true_id, &true_id, region) {
-                    eprintln!("IO_ERROR: cannot save nested buffer content: {}", e);
+                // Nested read: save to nested location ONLY
+                // Find the parent's directory path (could be flat or nested)
+                let parent_dir = storage::find_true_id_dir(&file_hash, parent_true_id)
+                    .unwrap_or_else(|| buffer_path::true_id_dir(&file_hash, parent_true_id));
+                
+                // Build the full nested path: {parent_dir}/{true_id}
+                let nested_dir = parent_dir.join(&true_id);
+                
+                // Ensure the directory exists
+                if let Err(e) = std::fs::create_dir_all(&nested_dir) {
+                    eprintln!("IO_ERROR: cannot create directory {}: {}", nested_dir.display(), e);
+                    return 1;
+                }
+                
+                // Save content
+                let content_path = nested_dir.join("content");
+                if let Err(e) = std::fs::write(&content_path, &buffer_to_save) {
+                    eprintln!("IO_ERROR: cannot write {}: {}", content_path.display(), e);
+                    return 1;
+                }
+                
+                // Save metadata
+                let metadata_path = nested_dir.join("metadata.json");
+                let buffer_meta = storage::BufferMeta {
+                    true_id: true_id.clone(),
+                    parent_true_id: Some(parent_true_id.clone()),  // Store parent for hierarchy
+                    region_hash: h.clone(),
+                    anchor: anchor_str_base.to_string(),
+                };
+                let json = match serde_json::to_string_pretty(&buffer_meta) {
+                    Ok(j) => j,
+                    Err(e) => {
+                        eprintln!("IO_ERROR: JSON serialization failed: {}", e);
+                        return 1;
+                    }
+                };;
+                if let Err(e) = std::fs::write(&metadata_path, &json) {
+                    eprintln!("IO_ERROR: cannot write {}: {}", metadata_path.display(), e);
+                    return 1;
+                }
+            } else {
+                // Level-1: save to flat location
+                if let Err(e) = storage::save_region_content(&file_hash, &true_id, &buffer_to_save) {
+                    eprintln!("IO_ERROR: cannot save region content: {}", e);
+                    return 1;
+                }
+                
+                // Save buffer metadata
+                let buffer_meta = storage::BufferMeta {
+                    true_id: true_id.clone(),
+                    parent_true_id: None,
+                    region_hash: h.clone(),
+                    anchor: anchor_str_base.to_string(),
+                };
+                if let Err(e) = storage::save_buffer_metadata(&file_hash, &true_id, &buffer_meta) {
+                    eprintln!("IO_ERROR: cannot save buffer metadata: {}", e);
                     return 1;
                 }
             }
@@ -199,6 +249,31 @@ pub fn execute(
             0
         }
     }
+}
+
+/// Find buffer content for a true_id in nested directory structure
+fn find_nested_buffer_content(file_hash: &str, true_id: &str) -> Option<Vec<u8>> {
+    let temp_dir = std::env::temp_dir();
+    let file_dir = temp_dir.join("anchorscope").join(file_hash);
+    
+    if let Ok(entries) = std::fs::read_dir(&file_dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                let parent_true_id = entry.file_name();
+                let parent_true_id_str = parent_true_id.to_string_lossy();
+                let nested_content_path = buffer_path::nested_true_id_dir(
+                    file_hash,
+                    &parent_true_id_str,
+                    true_id
+                ).join("content");
+                
+                if nested_content_path.exists() {
+                    return std::fs::read(&nested_content_path).ok();
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Find file_hash containing a given true_id by searching all buffer directories
@@ -241,4 +316,65 @@ fn find_file_hash_for_true_id(true_id: &str) -> Option<String> {
     }
     
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{hash, storage};
+    use std::fs;
+
+    #[test]
+    fn true_id_nested_uses_parent_region_hash() {
+        // Prepare a temporary file content with outer and inner anchors
+        let content = b"12345"; // outer anchor "234", inner "3"
+        let file_hash = hash::compute(content);
+        // file_hash = hash of '12345'
+        // Save file content
+        storage::save_file_content(&file_hash, content).unwrap();
+        // Simulate outer anchor region "234"
+        let outer_region = b"234";
+        let outer_region_hash = hash::compute(outer_region);
+        let outer_true_id = hash::compute(format!("{}_{}", file_hash, outer_region_hash).as_bytes());
+        // Save outer buffer metadata
+        let outer_meta = storage::BufferMeta {
+            true_id: outer_true_id.clone(),
+            parent_true_id: None,
+            region_hash: outer_region_hash.clone(),
+            anchor: "234".to_string(),
+        };
+        storage::save_buffer_metadata(&file_hash, &outer_true_id, &outer_meta).unwrap();
+        storage::save_region_content(&file_hash, &outer_true_id, outer_region).unwrap();
+
+        // Now simulate nested read using label pointing to outer_true_id and inner anchor "B"
+        // Save label mapping and source path for the file_hash
+        storage::save_label_mapping("tmp_label", &outer_true_id).unwrap();
+        // Create a temporary real file for source path
+        let tmp_file_path = std::env::temp_dir().join("tmp_anchor_file.txt");
+        std::fs::write(&tmp_file_path, content).expect("write tmp file");
+        storage::save_source_path(&file_hash, tmp_file_path.to_str().unwrap()).unwrap();
+        // Execute read in label mode
+        let exit_code = execute("tmp_path", Some("3"), None, Some("tmp_label"));
+        assert_eq!(exit_code, 0);
+        // Find inner true_id generated (should be stored as a label? we can locate by scanning buffers)
+        // Load all buffers to find one whose parent_true_id is outer_true_id
+        let inner_file_hash = file_hash.clone(); // same file_hash used
+        // Directly load inner buffer metadata using expected true_id
+        let inner_region_hash = hash::compute(b"3");
+        let expected_true_id = hash::compute(format!("{}_{}", outer_region_hash, inner_region_hash).as_bytes());
+        // Verify that the buffer directory was created under the file hash, nested under the parent
+        let file_dir = crate::buffer_path::file_dir(&file_hash);
+        let parent_dir = file_dir.join(&outer_true_id);
+        let entries: Vec<_> = std::fs::read_dir(&parent_dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert!(!entries.is_empty(), "no buffer directories found under parent");
+        let names: Vec<String> = entries.iter().map(|os| os.to_string_lossy().to_string()).collect();
+        assert!(names.contains(&expected_true_id), "expected true_id dir not found, got: {:?}", names);
+        let inner_meta = storage::load_buffer_metadata(&file_hash, &expected_true_id).expect("inner metadata not found");
+        assert_eq!(inner_meta.parent_true_id.as_deref(), Some(outer_true_id.as_str()));
+        // Cleanup
+        storage::invalidate_true_id(&file_hash, &outer_true_id);
+        storage::invalidate_true_id(&file_hash, &expected_true_id);
+        storage::invalidate_label("tmp_label");
+        let _ = std::fs::remove_file(tmp_file_path);
+    }
 }

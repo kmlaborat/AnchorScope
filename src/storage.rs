@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::fs;
 use serde::{Serialize, Deserialize};
 use crate::buffer_path;
@@ -141,6 +141,17 @@ pub fn save_nested_buffer_content(file_hash: &str, parent_true_id: &str, true_id
         .map_err(|e| io_error_to_spec(e, "write failure"))
 }
 
+/// Save nested buffer metadata to {TMPDIR}/anchorscope/{file_hash}/{parent_true_id}/{true_id}/metadata.json.
+pub fn save_nested_buffer_metadata(file_hash: &str, parent_true_id: &str, true_id: &str, meta: &BufferMeta) -> Result<(), String> {
+    let dir = buffer_path::nested_true_id_dir(file_hash, parent_true_id, true_id);
+    ensure_dir(&dir)?;
+    let path = dir.join("metadata.json");
+    let json = serde_json::to_string_pretty(meta)
+        .map_err(|e| format!("IO_ERROR: JSON serialization failed: {}", e))?;
+    fs::write(&path, json)
+        .map_err(|e| io_error_to_spec(e, "write failure"))
+}
+
 /// Save buffer metadata to {TMPDIR}/anchorscope/{file_hash}/{true_id}/metadata.json.
 pub fn save_buffer_metadata(file_hash: &str, true_id: &str, meta: &BufferMeta) -> Result<(), String> {
     let dir = buffer_path::true_id_dir(file_hash, true_id);
@@ -152,40 +163,29 @@ pub fn save_buffer_metadata(file_hash: &str, true_id: &str, meta: &BufferMeta) -
         .map_err(|e| io_error_to_spec(e, "write failure"))
 }
 
-/// Find file_hash containing a given true_id by searching all buffer directories
-pub fn find_file_hash_for_true_id(true_id: &str) -> Option<String> {
-    let temp_dir = std::env::temp_dir();
-    let anchorscope_dir = temp_dir.join("anchorscope");
+/// Find the directory path for a given true_id (could be flat or nested).
+/// Returns the path to the directory containing the true_id's content.
+pub fn find_true_id_dir(file_hash: &str, true_id: &str) -> Option<PathBuf> {
+    // First check flat location: {file_hash}/{true_id}/
+    let flat_path = buffer_path::true_id_dir(file_hash, true_id);
+    if flat_path.join("content").exists() || flat_path.join("metadata.json").exists() {
+        return Some(flat_path);
+    }
     
-    if let Ok(entries) = std::fs::read_dir(&anchorscope_dir) {
+    // Check nested locations: {file_hash}/{parent}/{true_id}/
+    let file_dir = buffer_path::file_dir(file_hash);
+    if let Ok(entries) = std::fs::read_dir(&file_dir) {
         for entry in entries.flatten() {
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                let file_hash = entry.file_name();
-                let file_hash_str = file_hash.to_string_lossy();
-                
-                // Check if {file_hash}/{true_id}/content exists
-                let content_path = buffer_path::true_id_dir(&file_hash_str, true_id).join("content");
-                if content_path.exists() {
-                    return Some(file_hash_str.to_string());
-                }
-                
-                // Check nested: {file_hash}/{parent_true_id}/{true_id}/content
-                // We need to search within the file_hash directory
-                if let Ok(file_dir_entries) = std::fs::read_dir(buffer_path::file_dir(&file_hash_str)) {
-                    for parent_entry in file_dir_entries.flatten() {
-                        if parent_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                            let parent_true_id = parent_entry.file_name();
-                            let nested_content_path = buffer_path::nested_true_id_dir(
-                                &file_hash_str,
-                                &parent_true_id.to_string_lossy(),
-                                true_id
-                            ).join("content");
-                            
-                            if nested_content_path.exists() {
-                                return Some(file_hash_str.to_string());
-                            }
-                        }
-                    }
+                let parent_true_id = entry.file_name();
+                let parent_true_id_str = parent_true_id.to_string_lossy();
+                let nested_path = buffer_path::nested_true_id_dir(
+                    file_hash,
+                    &parent_true_id_str,
+                    true_id
+                );
+                if nested_path.join("content").exists() || nested_path.join("metadata.json").exists() {
+                    return Some(nested_path);
                 }
             }
         }
@@ -194,13 +194,117 @@ pub fn find_file_hash_for_true_id(true_id: &str) -> Option<String> {
     None
 }
 
+/// Find file_hash containing a given true_id by searching all buffer directories
+pub fn find_file_hash_for_true_id(true_id: &str) -> Option<String> {
+    let temp_dir = std::env::temp_dir();
+    let anchorscope_dir = temp_dir.join("anchorscope");
+    
+    // Search all file_hash directories
+    if let Ok(entries) = std::fs::read_dir(&anchorscope_dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                let file_hash = entry.file_name();
+                let file_hash_str = file_hash.to_string_lossy();
+                
+                // Use BFS to search all nested locations for this true_id
+                let file_dir = buffer_path::file_dir(&file_hash_str);
+                if file_hash_exists_in_dir(&file_dir, true_id) {
+                    return Some(file_hash_str.to_string());
+                }
+            }
+        }
+    }
+    
+    None
+}
+
+/// Check if true_id exists in the directory tree.
+fn file_hash_exists_in_dir(dir: &Path, true_id: &str) -> bool {
+    use std::collections::VecDeque;
+    
+    let mut queue = VecDeque::new();
+    queue.push_back(dir.to_path_buf());
+    
+    while let Some(current_dir) = queue.pop_front() {
+        // Check if {current_dir}/{true_id}/content exists
+        let content_path = current_dir.join(true_id).join("content");
+        if content_path.exists() {
+            return true;
+        }
+        
+        // Add all subdirectories to the queue
+        if let Ok(entries) = std::fs::read_dir(&current_dir) {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    queue.push_back(entry.path());
+                }
+            }
+        }
+    }
+    
+    false
+}
+
 /// Return the file hash for a given True ID, or error if not found.
 pub fn file_hash_for_true_id(true_id: &str) -> Result<String, String> {
     find_file_hash_for_true_id(true_id)
         .ok_or_else(|| format!("IO_ERROR: file hash for True ID '{}' not found", true_id))
 }
 
-/// Load buffer content from {TMPDIR}/anchorscope/{file_hash}/{true_id}/content.
+/// Load buffer content from {TMPDIR}/anchorscope/{file_hash}/{true_id}/content or nested location.
+pub fn load_buffer_content(file_hash: &str, true_id: &str) -> Result<Vec<u8>, String> {
+    // First try flat location
+    let flat_path = buffer_path::true_id_dir(file_hash, true_id).join("content");
+    if flat_path.exists() {
+        return fs::read(&flat_path)
+            .map_err(|e| io_error_to_spec(e, "read failure"));
+    }
+    
+    // Try nested location
+    let nested_path = buffer_path::nested_true_id_dir(file_hash, "", true_id).join("content");
+    if nested_path.exists() {
+        return fs::read(&nested_path)
+            .map_err(|e| io_error_to_spec(e, "read failure"));
+    }
+    
+    Err(io_error_to_spec(std::io::Error::new(std::io::ErrorKind::NotFound, "content"), "file not found"))
+}
+
+/// Load buffer metadata from {TMPDIR}/anchorscope/{file_hash}/{true_id}/metadata.json or nested location.
+pub fn load_buffer_metadata(file_hash: &str, true_id: &str) -> Result<BufferMeta, String> {
+    // Use BFS to search all nested locations
+    let file_dir = buffer_path::file_dir(file_hash);
+    
+    use std::collections::VecDeque;
+    let mut queue = VecDeque::new();
+    queue.push_back(file_dir);
+    
+    while let Some(current_dir) = queue.pop_front() {
+        let nested_metadata_path = current_dir.join(true_id).join("metadata.json");
+        if nested_metadata_path.exists() {
+            let content = fs::read_to_string(&nested_metadata_path)
+                .map_err(|e| io_error_to_spec(e, "read failure"))?;
+            let meta: BufferMeta = serde_json::from_str(&content)
+                .map_err(|e| format!("IO_ERROR: buffer metadata corrupted: {}", e))?;
+            
+            // Verify the true_id matches
+            if meta.true_id == true_id || meta.region_hash == true_id {
+                return Ok(meta);
+            }
+        }
+        
+        // Add all subdirectories to the queue
+        if let Ok(entries) = std::fs::read_dir(&current_dir) {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    queue.push_back(entry.path());
+                }
+            }
+        }
+    }
+    
+    Err(io_error_to_spec(std::io::Error::new(std::io::ErrorKind::NotFound, "metadata.json"), "file not found"))
+}
 
 #[cfg(test)]
 mod tests {
@@ -224,26 +328,11 @@ mod tests {
     }
 }
 
-pub fn load_buffer_content(file_hash: &str, true_id: &str) -> Result<Vec<u8>, String> {
-    let path = buffer_path::true_id_dir(file_hash, true_id).join("content");
-    fs::read(&path)
-        .map_err(|e| io_error_to_spec(e, "read failure"))
-}
-
 /// Load file content from {TMPDIR}/anchorscope/{file_hash}/content.
 pub fn load_file_content(file_hash: &str) -> Result<Vec<u8>, String> {
     let path = buffer_path::file_dir(file_hash).join("content");
     fs::read(&path)
         .map_err(|e| io_error_to_spec(e, "read failure"))
-}
-
-/// Load buffer metadata from {TMPDIR}/anchorscope/{file_hash}/{true_id}/metadata.json.
-pub fn load_buffer_metadata(file_hash: &str, true_id: &str) -> Result<BufferMeta, String> {
-    let path = buffer_path::true_id_dir(file_hash, true_id).join("metadata.json");
-    let content = fs::read_to_string(&path)
-        .map_err(|e| io_error_to_spec(e, "read failure"))?;
-    serde_json::from_str(&content)
-        .map_err(|e| format!("IO_ERROR: buffer metadata corrupted: {}", e))
 }
 
 /// Load source path from {TMPDIR}/anchorscope/{file_hash}/source_path.
@@ -255,9 +344,9 @@ pub fn load_source_path(file_hash: &str) -> Result<String, String> {
 
 /// Load anchor metadata with True ID from {TMPDIR}/anchorscope/{file_hash}/{true_id}/metadata.json.
 pub fn load_anchor_metadata_by_true_id(true_id: &str) -> Result<AnchorMeta, String> {
-    // First check old location (v1.1.0 compatibility)
+    // First check old location (v1.1.0 compatibility) - at {anchorscope_dir}/anchors/
     let temp_dir = std::env::temp_dir();
-    let anchors_dir = temp_dir.join("anchors");
+    let anchors_dir = temp_dir.join("anchorscope").join("anchors");
     let path = anchors_dir.join(format!("{}.json", true_id));
     if path.exists() {
         let content = fs::read_to_string(&path)
@@ -266,7 +355,7 @@ pub fn load_anchor_metadata_by_true_id(true_id: &str) -> Result<AnchorMeta, Stri
             .map_err(|e| format!("IO_ERROR: anchor metadata corrupted: {}", e));
     }
     
-    // Check new buffer locations - only iterate through file_hash directories, not special subdirs
+    // Search all buffer locations recursively
     let anchorscope_dir = temp_dir.join("anchorscope");
     if let Ok(entries) = std::fs::read_dir(&anchorscope_dir) {
         for entry in entries.flatten() {
@@ -278,93 +367,66 @@ pub fn load_anchor_metadata_by_true_id(true_id: &str) -> Result<AnchorMeta, Stri
                     continue;
                 }
                 
-                // First check {file_hash}/{true_id}/ for a direct match
-                let true_id_dir = buffer_path::true_id_dir(&file_hash_str, true_id);
-                let content_path = true_id_dir.join("content");
-                let metadata_path = true_id_dir.join("metadata.json");
-                
-                if content_path.exists() || metadata_path.exists() {
-                    // Check if this is the buffer we're looking for
-                    // The true_id could be the buffer's true_id or its region_hash
-                    let is_match = {
-                        if metadata_path.exists() {
-                            let content = fs::read_to_string(&metadata_path)
-                                .map_err(|e| io_error_to_spec(e, "read failure"))?;
-                            let buffer_meta: BufferMeta = serde_json::from_str(&content)
-                                .map_err(|e| format!("IO_ERROR: buffer metadata corrupted: {}", e))?;
-                            let match_result = buffer_meta.true_id == true_id || buffer_meta.region_hash == true_id;
-                            match_result
-                        } else {
-                            false
-                        }
-                    };
-                    
-                    if is_match {
-                        // Load metadata if exists
-                        let content = fs::read_to_string(&metadata_path)
-                            .map_err(|e| io_error_to_spec(e, "read failure"))?;
-                        let buffer_meta: BufferMeta = serde_json::from_str(&content)
-                            .map_err(|e| format!("IO_ERROR: buffer metadata corrupted: {}", e))?;
-                        
-                        // Load source path
-                        let source_path = buffer_path::file_dir(&file_hash_str).join("source_path");
-                        let file = fs::read_to_string(&source_path)
-                            .map_err(|e| io_error_to_spec(e, "read failure"))?;
-                        
-                        let region_hash = buffer_meta.region_hash.clone();
-                        let anchor = buffer_meta.anchor.clone();
-                        return Ok(AnchorMeta {
-                            file,
-                            anchor,
-                            hash: region_hash,
-                            line_range: (0, 0),  // Line range not stored in buffer metadata
-                        });
-                    }
-                }
-                
-                // Also check nested directories under {file_hash}/
-                if let Ok(dir_entries) = std::fs::read_dir(buffer_path::file_dir(&file_hash_str)) {
-                    for dir_entry in dir_entries.flatten() {
-                        if dir_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                            let subdir_true_id = dir_entry.file_name();
-                            let subdir_true_id_str = subdir_true_id.to_string_lossy();
-                            
-                            let subdir_content_path = buffer_path::true_id_dir(&file_hash_str, &subdir_true_id_str).join("content");
-                            let subdir_metadata_path = buffer_path::true_id_dir(&file_hash_str, &subdir_true_id_str).join("metadata.json");
-                            
-                            if subdir_metadata_path.exists() {
-                                let content = fs::read_to_string(&subdir_metadata_path)
-                                    .map_err(|e| io_error_to_spec(e, "read failure"))?;
-                                let buffer_meta: BufferMeta = serde_json::from_str(&content)
-                                    .map_err(|e| format!("IO_ERROR: buffer metadata corrupted: {}", e))?;
-                                
-                                // Check if this buffer's true_id or region_hash matches
-                                let match_result = buffer_meta.true_id == true_id || buffer_meta.region_hash == true_id;
-                                if match_result {
-                                    
-                                    // Load source path
-                                    let source_path = buffer_path::file_dir(&file_hash_str).join("source_path");
-                                    let file = fs::read_to_string(&source_path)
-                                        .map_err(|e| io_error_to_spec(e, "read failure"))?;
-                                    
-                                    let region_hash = buffer_meta.region_hash.clone();
-                                    let anchor = buffer_meta.anchor.clone();
-                                    return Ok(AnchorMeta {
-                                        file,
-                                        anchor,
-                                        hash: region_hash,
-                                        line_range: (0, 0),
-                                    });
-                                }
-                            }
-                        }
-                    }
+                // Search for true_id recursively in this file_hash
+                if let Some(meta) = search_true_id_in_dir(&file_hash_str, true_id) {
+                    return meta;
                 }
             }
         }
     }
     
     Err(format!("IO_ERROR: anchor metadata for true_id '{}' not found", true_id))
+}
+
+/// Search for a true_id in the buffer directory tree using BFS.
+fn search_true_id_in_dir(file_hash: &str, target_true_id: &str) -> Option<Result<AnchorMeta, String>> {
+    use std::collections::VecDeque;
+    
+    let mut queue = VecDeque::new();
+    queue.push_back(buffer_path::file_dir(file_hash));
+    
+    while let Some(current_dir) = queue.pop_front() {
+        // Check if {current_dir}/{target_true_id}/metadata.json exists
+        let metadata_path = current_dir.join(target_true_id).join("metadata.json");
+        if metadata_path.exists() {
+            match load_buffer_metadata(file_hash, target_true_id) {
+                Ok(meta) => {
+                    if meta.true_id == target_true_id || meta.region_hash == target_true_id {
+                        return Some(load_anchor_meta_from_buffer(file_hash, &meta));
+                    }
+                }
+                Err(_) => {}
+            }
+        }
+        
+        // Add all subdirectories to the queue
+        if let Ok(entries) = std::fs::read_dir(&current_dir) {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    queue.push_back(entry.path());
+                }
+            }
+        }
+    }
+    
+    None
+}
+
+/// Load AnchorMeta from BufferMeta.
+fn load_anchor_meta_from_buffer(file_hash: &str, buffer_meta: &BufferMeta) -> Result<AnchorMeta, String> {
+    let source_path = buffer_path::file_dir(file_hash).join("source_path");
+    let file = fs::read_to_string(&source_path)
+        .map_err(|e| io_error_to_spec(e, "read failure"))?;
+    
+    let region_hash = buffer_meta.region_hash.clone();
+    let anchor = buffer_meta.anchor.clone();
+    
+    Ok(AnchorMeta {
+        file,
+        anchor,
+        hash: region_hash,
+        line_range: (0, 0),
+    })
 }
 
 /// Debug: print all buffer contents
@@ -457,26 +519,28 @@ pub fn invalidate_nested_true_id(file_hash: &str, parent_true_id: &str, true_id:
 /// This recursively removes the directory {file_hash}/{true_id} and all nested children.
 /// SPEC §4.3 requires that write operations delete the anchor's directory "and all its descendants".
 pub fn invalidate_true_id_hierarchy(file_hash: &str, true_id: &str) -> Result<(), String> {
-    let base_path = buffer_path::true_id_dir(file_hash, true_id);
+    use std::collections::VecDeque;
     
-    // Delete the immediate directory
-    if base_path.exists() {
-        std::fs::remove_dir_all(&base_path)
-            .map_err(|e| format!("IO_ERROR: cannot delete buffer {}: {}", base_path.display(), e))?;
-    }
-    
-    // Search for nested children and delete them too
     let file_dir = buffer_path::file_dir(file_hash);
-    if let Ok(entries) = std::fs::read_dir(&file_dir) {
-        for entry in entries.flatten() {
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                let parent_id = entry.file_name();
-                let parent_id_str = parent_id.to_string_lossy();
-                let nested_path = buffer_path::nested_true_id_dir(file_hash, &parent_id_str, true_id);
-                
-                if nested_path.exists() {
-                    std::fs::remove_dir_all(&nested_path)
-                        .map_err(|e| format!("IO_ERROR: cannot delete nested buffer {}: {}", nested_path.display(), e))?;
+    
+    // Use BFS to find and delete all directories named {true_id}
+    let mut queue = VecDeque::new();
+    queue.push_back(file_dir);
+    
+    while let Some(current_dir) = queue.pop_front() {
+        // Check if {current_dir}/{true_id}/ exists
+        let target_dir = current_dir.join(true_id);
+        
+        if target_dir.exists() {
+            std::fs::remove_dir_all(&target_dir)
+                .map_err(|e| format!("IO_ERROR: cannot delete buffer {}: {}", target_dir.display(), e))?;
+        }
+        
+        // Add all subdirectories to the queue
+        if let Ok(entries) = std::fs::read_dir(&current_dir) {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    queue.push_back(entry.path());
                 }
             }
         }

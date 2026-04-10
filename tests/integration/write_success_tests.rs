@@ -190,11 +190,11 @@ fn write_using_label() {
     ]);
     assert!(out_read.status.success(), "read failed: {}", String::from_utf8_lossy(&out_read.stderr));
     let res = parse_output(&String::from_utf8_lossy(&out_read.stdout));
-    let internal_label = res.get("label").unwrap().clone();
+    let true_id = res.get("true_id").unwrap().clone();
 
     // 2. create human-readable label
     let out_label = run_anchorscope(&[
-        "label", "--name", "my_anchor", "--true-id", &internal_label
+        "label", "--name", "my_anchor", "--true-id", &true_id
     ]);
     assert!(out_label.status.success(), "label failed: {}", String::from_utf8_lossy(&out_label.stderr));
 

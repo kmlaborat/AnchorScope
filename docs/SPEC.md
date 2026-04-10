@@ -262,9 +262,11 @@ recursive editing without modifying the original file.
 | :---- | :--------------- |
 | `read` on original file | Creates `{file_hash}/content`, `{file_hash}/source_path`, `{file_hash}/{true_id}/content` |
 | `read` on buffer copy | Creates `{file_hash}/{true_id}/{true_id}/content` (nested) |
-| `write` success | Deletes the written anchor's directory and all its descendants |
+| `write` success | Deletes the written anchor's True ID directory and all its descendants |
 | `write` failure | Buffer is retained for retry or inspection |
 | Process exit / error | Buffer is retained (OS temp cleanup handles eventual removal) |
+
+**Note:** The `write` command deletes the buffer directory corresponding to the True ID used for the write operation, which may be different from the file_hash of the original file. The buffer hierarchy is cleaned up recursively to ensure all related artefacts are removed.
 
 ---
 
