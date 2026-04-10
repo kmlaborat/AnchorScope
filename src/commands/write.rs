@@ -22,11 +22,6 @@ pub fn execute(
         let meta = match crate::storage::load_anchor_metadata_by_true_id(&true_id) {
             Ok(m) => m,
             Err(e) => {
-                eprintln!("{}", e);
-                eprintln!("DEBUG: true_id = {}", true_id);
-                eprintln!("DEBUG: Searching for buffers...");
-                crate::storage::print_all_buffers();
-                eprintln!("DEBUG: done searching");
                 return 1;
             }
         };
@@ -103,6 +98,18 @@ pub fn execute(
                 crate::storage::invalidate_label(lname);
             }
             crate::storage::invalidate_anchor(&expected_hash);
+            
+            // Clean up buffer artifacts
+            if let Some(ref label_name) = used_label {
+                if let Ok(true_id) = crate::storage::load_label_target(label_name) {
+                    if let Ok(file_hash) = crate::storage::file_hash_for_true_id(&true_id) {
+                        if let Err(e) = crate::storage::invalidate_true_id_hierarchy(&file_hash, &true_id) {
+                            eprintln!("{}", e);
+                        }
+                    }
+                }
+            }
+            
             println!("OK: written {} bytes", result.len());
             0
         }
