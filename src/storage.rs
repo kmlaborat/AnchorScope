@@ -172,6 +172,51 @@ pub fn find_true_id_dir(file_hash: &str, true_id: &str) -> Result<Option<PathBuf
     Ok(if found_paths.is_empty() { None } else { Some(found_paths[0].clone()) })
 }
 
+/// Find buffer content for a true_id by searching all directory levels.
+/// Returns content if found, Err(AnchorScopeError::CannotLoadBufferContent) if not found.
+/// This function eliminates duplicate traversal logic that was in commands/read.rs.
+pub fn find_buffer_content(file_hash: &str, true_id: &str) -> Result<Vec<u8>, AnchorScopeError> {
+    // Check flat location first
+    let flat_path = buffer_path::true_id_dir(file_hash, true_id).join("content");
+    if flat_path.exists() {
+        return fs::read(&flat_path).map_err(|e| io_error_to_spec(e, "read failure"));
+    }
+    
+    // Check nested locations using BFS
+    let file_dir = buffer_path::file_dir(file_hash);
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back(file_dir);
+    
+    while let Some(current_dir) = queue.pop_front() {
+        // Check all subdirectories
+        if let Ok(entries) = std::fs::read_dir(&current_dir) {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    let child_dir = entry.path();
+                    let content_path = child_dir.join(true_id).join("content");
+                    
+                    if content_path.exists() {
+                        return fs::read(&content_path).map_err(|e| io_error_to_spec(e, "read failure"));
+                    }
+                    
+                    // Add to queue for deeper search
+                    queue.push_back(child_dir);
+                }
+            }
+        }
+    }
+    
+    Err(AnchorScopeError::CannotLoadBufferContent)
+}
+
+/// Find file_hash containing a given true_id by searching all buffer directories.
+/// Returns Ok(Some(file_hash)) if found, Ok(None) if not found.
+/// Returns Err(AmbiguousAnchorError) if true_id exists in multiple locations.
+/// This function eliminates duplicate code that was in commands/read.rs and commands/label.rs.
+pub fn file_hash_for_true_id_opt(true_id: &str) -> Result<Option<String>, AmbiguousAnchorError> {
+    find_file_hash_for_true_id_with_dup_check(true_id)
+}
+
 /// Check if true_id exists in the directory tree.
 /// Returns (found, count) where count is the number of matching directories.
 pub fn file_hash_exists_in_dir_with_count(dir: &Path, true_id: &str) -> (bool, usize) {
@@ -507,4 +552,29 @@ pub fn check_duplicate_true_id_in_file_hash(file_hash: &str, true_id: &str) -> R
 pub fn load_replacement_content(file_hash: &str, true_id: &str) -> Result<Vec<u8>, AnchorScopeError> {
     let replacement_path = buffer_path::true_id_dir(file_hash, true_id).join("replacement");
     fs::read(&replacement_path).map_err(|e| io_error_to_spec(e, "replacement not found"))
+}
+
+/// Check if a true_id exists in the buffer (flat or nested locations).
+/// Returns true if found, false otherwise.
+/// This function eliminates duplicate code that was in commands/read.rs.
+pub fn true_id_exists(file_hash: &str, true_id: &str) -> bool {
+    // Check flat location
+    let flat_path = buffer_path::true_id_dir(file_hash, true_id).join("content");
+    if flat_path.exists() {
+        return true;
+    }
+    
+    // Check nested locations
+    if let Ok(entries) = std::fs::read_dir(buffer_path::file_dir(file_hash)) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                let content_path = entry.path().join(true_id).join("content");
+                if content_path.exists() {
+                    return true;
+                }
+            }
+        }
+    }
+    
+    false
 }
