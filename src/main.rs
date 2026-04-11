@@ -2,6 +2,7 @@ mod buffer_path;
 mod cli;
 mod commands;
 mod config;
+mod error;
 mod hash;
 mod matcher;
 mod storage;
@@ -11,20 +12,14 @@ use cli::{Cli, Command};
 use matcher::normalize_line_endings;
 use std::fs;
 use std::process;
+use crate::error::AnchorScopeError;
 
 pub fn map_io_error_read(e: std::io::Error) -> String {
-    match e.kind() {
-        std::io::ErrorKind::NotFound => "IO_ERROR: file not found".to_string(),
-        std::io::ErrorKind::PermissionDenied => "IO_ERROR: permission denied".to_string(),
-        _ => "IO_ERROR: read failure".to_string(),
-    }
+    AnchorScopeError::from(e).to_spec_string()
 }
 
 pub fn map_io_error_write(e: std::io::Error) -> String {
-    match e.kind() {
-        std::io::ErrorKind::PermissionDenied => "IO_ERROR: permission denied".to_string(),
-        _ => "IO_ERROR: write failure".to_string(),
-    }
+    crate::error::from_io_error_write(e).to_spec_string()
 }
 
 pub fn validate_utf8(bytes: &[u8]) -> Result<(), String> {
@@ -146,11 +141,15 @@ mod tests {
         let e = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
         assert_eq!(map_io_error_write(e), "IO_ERROR: permission denied");
 
-        // Test other errors (NotFound, Interrupted, etc.)
+        // Test NotFound (maps to WriteFailure for write operations)
         let e = std::io::Error::from(std::io::ErrorKind::NotFound);
         assert_eq!(map_io_error_write(e), "IO_ERROR: write failure");
 
+        // Test other errors (Interrupted, Other, etc.)
         let e = std::io::Error::from(std::io::ErrorKind::Interrupted);
+        assert_eq!(map_io_error_write(e), "IO_ERROR: write failure");
+
+        let e = std::io::Error::from(std::io::ErrorKind::Other);
         assert_eq!(map_io_error_write(e), "IO_ERROR: write failure");
     }
 
