@@ -138,9 +138,9 @@ fn hash_on_normalized_content() {
 
     let hash = result.get("hash").expect("hash should be present");
 
-    // Compute expected hash manually on the normalized matched region
+    // Compute expected hash manually on the normalized matched scope
     // The anchor "TARGET" appears on a line by itself. After normalization, the matched
-    // region should be just "TARGET" without the CRLF.
+    // scope should be just "TARGET" without the CRLF.
     // Note: The anchor itself is "TARGET" which has no newlines. The CRLF is part of the
     // line ending in the file, which is normalized away during matching.
     let expected_hash = format!("{:016x}", xxh3_64(b"TARGET"));

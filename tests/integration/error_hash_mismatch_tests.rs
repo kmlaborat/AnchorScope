@@ -8,7 +8,7 @@ fn write_hash_mismatch_wrong_hash() {
     let anchor = "ANCHOR";
     let replacement = "REPLACED";
 
-    // First, use read command to obtain the correct hash of the anchor region
+    // First, use read command to obtain the correct hash of the anchor scope
     let output = run_anchorscope(&[
         "read",
         "--file",

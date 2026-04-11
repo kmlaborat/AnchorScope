@@ -138,8 +138,8 @@ pub fn execute(
         Ok(m) => m,
     };
 
-    let region = &normalized[m.byte_start..m.byte_end];
-    let actual_hash = crate::hash::compute(region);
+    let scope = &normalized[m.byte_start..m.byte_end];
+    let actual_hash = crate::hash::compute(scope);
 
     if actual_hash != expected_hash {
         eprintln!("HASH_MISMATCH");

@@ -36,7 +36,7 @@ fn test_write_using_label_invalidates_files() {
     ]);
     assert!(out.status.success());
     let result = parse_output(&String::from_utf8_lossy(&out.stdout));
-    let label_hash = result.get("label").unwrap().clone();  // The label is the region hash for v1.1.0 compat
+    let label_hash = result.get("label").unwrap().clone();  // The label is the scope hash for v1.1.0 compat
 
     let label_out = run_anchorscope(&[
         "label", "--name", "greet", "--true-id", &label_hash

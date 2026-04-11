@@ -98,8 +98,8 @@ pub fn extract_function_body(content: &[u8], anchor_start: usize, anchor_end: us
     
     // Find the start of the function definition (look backwards for "def ")
     let search_start = if start >= 10 { start - 10 } else { 0 };
-    let search_region = &normalized[search_start..start];
-    if let Some(def_pos) = find_reverse(search_region, b"def ") {
+    let search_scope = &normalized[search_start..start];
+    if let Some(def_pos) = find_reverse(search_scope, b"def ") {
         // Find the beginning of the line containing "def "
         let actual_def_pos = search_start + def_pos;
         if actual_def_pos > 0 {

@@ -137,8 +137,8 @@ pub fn execute(
             1
         }
         Ok(m) => {
-            let region = &normalized[m.byte_start..m.byte_end];
-            let h = crate::hash::compute(region);
+            let scope = &normalized[m.byte_start..m.byte_end];
+            let h = crate::hash::compute(scope);
             
             // Compute file_hash from the raw file content (not buffer content)
             // This ensures the file_hash is consistent regardless of label mode
@@ -168,9 +168,9 @@ pub fn execute(
             
             // Compute True ID with parent context if nested
             let (true_id, parent_true_id) = if let Some((_ref_buffer_content, parent_tid)) = buffer_parent_true_id {
-                // Load parent buffer metadata to obtain its region hash
-                let parent_region_hash = match storage::load_buffer_metadata(&file_hash, &parent_tid) {
-                    Ok(meta) => meta.region_hash,
+                // Load parent buffer metadata to obtain its scope hash
+                let parent_scope_hash = match storage::load_buffer_metadata(&file_hash, &parent_tid) {
+                    Ok(meta) => meta.scope_hash,
                     Err(ref e) if e == "DUPLICATE_TRUE_ID" => {
                         eprintln!("DUPLICATE_TRUE_ID");
                         return 1;
@@ -180,20 +180,20 @@ pub fn execute(
                         return 1;
                     }
                 };
-// True ID per SPEC §3.2: xxh3_64(hex(parent_hash) || 0x5F || hex(child_hash))
+// True ID per SPEC §3.2: xxh3_64(hex(parent_scope_hash) || 0x5F || hex(child_scope_hash))
                 // format! with "{}_{}" produces the same byte sequence as byte concatenation with underscore (0x5F)
-                let region_hash = crate::hash::compute(region);
-                (crate::hash::compute(format!("{}_{}", parent_region_hash, region_hash).as_bytes()), Some(parent_tid.clone()))
+                let child_scope_hash = crate::hash::compute(scope);
+                (crate::hash::compute(format!("{}_{}", parent_scope_hash, child_scope_hash).as_bytes()), Some(parent_tid.clone()))
             } else {
-                let region_hash = crate::hash::compute(region);
-                (crate::hash::compute(format!("{}_{}", file_hash, region_hash).as_bytes()), None)
+                let child_scope_hash = crate::hash::compute(scope);
+                (crate::hash::compute(format!("{}_{}", file_hash, child_scope_hash).as_bytes()), None)
             };
             
             // Output is machine-readable: one key=value per line.
             println!("start_line={}", m.start_line);
             println!("end_line={}", m.end_line);
             println!("hash={}", h);
-            println!("content={}", String::from_utf8_lossy(region));
+            println!("content={}", String::from_utf8_lossy(scope));
             println!("true_id={}", &true_id);
             
             // Save anchor metadata per SPEC (v1.1.0 compatibility)
@@ -224,12 +224,12 @@ pub fn execute(
                 return 1;
             }
             
-            // Save matched region content
+            // Save matched scope content
             let buffer_to_save = if anchor_str.starts_with("def ") {
                 // Extract full function body for Python function definitions
                 crate::matcher::extract_function_body(&normalized, m.byte_start, m.byte_end)
             } else {
-                region.to_vec()
+                scope.to_vec()
             };
             
             if let Some(ref parent_true_id) = parent_true_id {
@@ -258,7 +258,7 @@ pub fn execute(
                         let buffer_meta = storage::BufferMeta {
                             true_id: true_id.clone(),
                             parent_true_id: Some(parent_true_id.clone()),  // Store parent for hierarchy
-                            region_hash: h.clone(),
+                            scope_hash: h.clone(),
                             anchor: anchor_str_base.to_string(),
                         };
                         let json = match serde_json::to_string_pretty(&buffer_meta) {
@@ -285,8 +285,8 @@ pub fn execute(
                 }
             } else {
                 // Level-1: save to flat location
-                if let Err(e) = storage::save_region_content(&file_hash, &true_id, &buffer_to_save) {
-                    eprintln!("IO_ERROR: cannot save region content: {}", e);
+                if let Err(e) = storage::save_scope_content(&file_hash, &true_id, &buffer_to_save) {
+                    eprintln!("IO_ERROR: cannot save scope content: {}", e);
                     return 1;
                 }
                 
@@ -294,7 +294,7 @@ pub fn execute(
                 let buffer_meta = storage::BufferMeta {
                     true_id: true_id.clone(),
                     parent_true_id: None,
-                    region_hash: h.clone(),
+                    scope_hash: h.clone(),
                     anchor: anchor_str_base.to_string(),
                 };
                 if let Err(e) = storage::save_buffer_metadata(&file_hash, &true_id, &buffer_meta) {
@@ -304,7 +304,7 @@ pub fn execute(
             }
             
             // For v1.2.0: output both label (v1.1.0 compat) and true_id
-            // label is the region hash for v1.1.0 compatibility
+            // label is the scope hash for v1.1.0 compatibility
             println!("label={}", h);
             println!("true_id={}", true_id);
             0
@@ -425,26 +425,26 @@ mod tests {
     use crate::{hash, storage};
 
     #[test]
-    fn true_id_nested_uses_parent_region_hash() {
+    fn true_id_nested_uses_parent_scope_hash() {
         // Prepare a temporary file content with outer and inner anchors
         let content = b"12345"; // outer anchor "234", inner "3"
         let file_hash = hash::compute(content);
         // file_hash = hash of '12345'
         // Save file content
         storage::save_file_content(&file_hash, content).unwrap();
-        // Simulate outer anchor region "234"
-        let outer_region = b"234";
-        let outer_region_hash = hash::compute(outer_region);
-        let outer_true_id = hash::compute(format!("{}_{}", file_hash, outer_region_hash).as_bytes());
+        // Simulate outer anchor scope "234"
+        let outer_scope = b"234";
+        let outer_scope_hash = hash::compute(outer_scope);
+        let outer_true_id = hash::compute(format!("{}_{}", file_hash, outer_scope_hash).as_bytes());
         // Save outer buffer metadata
         let outer_meta = storage::BufferMeta {
             true_id: outer_true_id.clone(),
             parent_true_id: None,
-            region_hash: outer_region_hash.clone(),
+            scope_hash: outer_scope_hash.clone(),
             anchor: "234".to_string(),
         };
         storage::save_buffer_metadata(&file_hash, &outer_true_id, &outer_meta).unwrap();
-        storage::save_region_content(&file_hash, &outer_true_id, outer_region).unwrap();
+        storage::save_scope_content(&file_hash, &outer_true_id, outer_scope).unwrap();
 
         // Now simulate nested read using label pointing to outer_true_id and inner anchor "B"
         // Save label mapping and source path for the file_hash
@@ -460,8 +460,8 @@ mod tests {
         // Load all buffers to find one whose parent_true_id is outer_true_id
         let _inner_file_hash = file_hash.clone(); // same file_hash used
         // Directly load inner buffer metadata using expected true_id
-        let inner_region_hash = hash::compute(b"3");
-        let expected_true_id = hash::compute(format!("{}_{}", outer_region_hash, inner_region_hash).as_bytes());
+        let inner_scope_hash = hash::compute(b"3");
+        let expected_true_id = hash::compute(format!("{}_{}", outer_scope_hash, inner_scope_hash).as_bytes());
         // Verify that the buffer directory was created under the file hash, nested under the parent
         let file_dir = crate::buffer_path::file_dir(&file_hash);
         let parent_dir = file_dir.join(&outer_true_id);

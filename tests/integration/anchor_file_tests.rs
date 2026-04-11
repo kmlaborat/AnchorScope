@@ -103,7 +103,7 @@ fn read_multiline_anchor_from_file() {
 
 #[test]
 fn write_with_anchor_file() {
-    // Create a temp file with an anchor region
+    // Create a temp file with an anchor scope
     let content = "before\nTARGET\nafter";
     let (_temp_dir, file_path) = create_temp_file(content);
 
@@ -113,7 +113,7 @@ fn write_with_anchor_file() {
     let anchor_file_path = temp_dir.path().join("anchor.txt");
     fs::write(&anchor_file_path, anchor_content).expect("failed to write anchor file");
 
-    // First, use read command to obtain the hash of the anchor region
+    // First, use read command to obtain the hash of the anchor scope
     let output = run_anchorscope(&[
         "read",
         "--file",

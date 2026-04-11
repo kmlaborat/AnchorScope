@@ -10,7 +10,7 @@ fn write_simple_replacement() {
     let (_temp_dir, file_path) = create_temp_file(content);
     let anchor = "ANCHOR";
 
-    // First, use read command to obtain the hash of the anchor region
+    // First, use read command to obtain the hash of the anchor scope
     let output = run_anchorscope(&[
         "read",
         "--file",
@@ -63,7 +63,7 @@ fn write_multiline_replacement() {
     let (_temp_dir, file_path) = create_temp_file(content);
     let anchor = "LINE1\nLINE2\nLINE3";
 
-    // First, use read command to obtain the hash of the anchor region
+    // First, use read command to obtain the hash of the anchor scope
     let output = run_anchorscope(&[
         "read",
         "--file",
@@ -104,7 +104,7 @@ fn write_multiline_replacement() {
     );
 
     // Read the file content and verify:
-    // - The anchor region is replaced
+    // - The anchor scope is replaced
     // - Other parts unchanged
     let final_content = read_file(&file_path);
     let expected_content = "Before\nNEW1\nNEW2\nNEW3\nAfter\n";
@@ -121,7 +121,7 @@ fn write_normalizes_replacement_to_lf() {
 
     let anchor = "ANCHOR";
 
-    // First, use read command to obtain the hash of the anchor region
+    // First, use read command to obtain the hash of the anchor scope
     // The read command will normalize the file content internally
     let output = run_anchorscope(&[
         "read",
@@ -164,7 +164,7 @@ fn write_normalizes_replacement_to_lf() {
     );
 
     // Read the file content and verify:
-    // - The anchor region is replaced
+    // - The anchor scope is replaced
     // - File content is normalized to LF line endings (no CR bytes)
     // - Other parts unchanged
     let final_bytes = fs::read(&file_path).expect("failed to read final file");

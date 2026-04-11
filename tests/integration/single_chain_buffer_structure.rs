@@ -2,7 +2,7 @@ use crate::test_helpers::*;
 
 #[test]
 fn nested_read_creates_single_hierarchical_chain() {
-    // Create a file with nested anchors where inner anchor is in the matched region of outer
+    // Create a file with nested anchors where inner anchor is in the matched scope of outer
     // Using Python-like syntax where the inner function is inside the outer function body
     let content = "def outer():\n    x = 1\n    def inner():\n        pass\n";
     let (_temp_dir, file_path) = create_temp_file(content);

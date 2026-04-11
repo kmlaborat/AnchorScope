@@ -9,20 +9,20 @@ fn true_id_never_uses_parent_tid_as_parent_hash() {
     // Save file content
     storage::save_file_content(&file_hash, content).unwrap();
     
-    // Simulate outer anchor region "234"
-    let outer_region = b"234";
-    let outer_region_hash = hash::compute(outer_region);
-    let outer_true_id = hash::compute(format!("{}_{}", file_hash, outer_region_hash).as_bytes());
+    // Simulate outer anchor scope "234"
+    let outer_scope = b"234";
+    let outer_scope_hash = hash::compute(outer_scope);
+    let outer_true_id = hash::compute(format!("{}_{}", file_hash, outer_scope_hash).as_bytes());
     
     // Save outer buffer metadata
     let outer_meta = storage::BufferMeta {
         true_id: outer_true_id.clone(),
         parent_true_id: None,
-        region_hash: outer_region_hash.clone(),
+        scope_hash: outer_scope_hash.clone(),
         anchor: "234".to_string(),
     };
     storage::save_buffer_metadata(&file_hash, &outer_true_id, &outer_meta).unwrap();
-    storage::save_region_content(&file_hash, &outer_true_id, outer_region).unwrap();
+    storage::save_scope_content(&file_hash, &outer_true_id, outer_scope).unwrap();
     
     // Save label mapping and source path
     storage::save_label_mapping("test_label", &outer_true_id).unwrap();
@@ -44,10 +44,10 @@ fn true_id_never_uses_parent_tid_as_parent_hash() {
     assert_eq!(exit_code, 0, "read should succeed with valid metadata");
     
     // Verify inner true_id was computed correctly
-    // inner_region_hash = hash("3")
-    // expected_true_id = hash(outer_region_hash + "_" + inner_region_hash)
-    let inner_region_hash = hash::compute(b"3");
-    let expected_true_id = hash::compute(format!("{}_{}", outer_region_hash, inner_region_hash).as_bytes());
+    // inner_scope_hash = hash("3")
+    // expected_true_id = hash(outer_scope_hash + "_" + inner_scope_hash)
+    let inner_scope_hash = hash::compute(b"3");
+    let expected_true_id = hash::compute(format!("{}_{}", outer_scope_hash, inner_scope_hash).as_bytes());
     
     // Check that the inner true_id exists in the nested directory
     let file_dir = anchorscope::buffer_path::file_dir(&file_hash);
@@ -58,7 +58,7 @@ fn true_id_never_uses_parent_tid_as_parent_hash() {
     // Verify the metadata was stored correctly
     let nested_meta = storage::load_buffer_metadata(&file_hash, &expected_true_id).expect("nested metadata not found");
     assert_eq!(nested_meta.parent_true_id.as_deref(), Some(outer_true_id.as_str()));
-    assert_eq!(nested_meta.region_hash, inner_region_hash);
+    assert_eq!(nested_meta.scope_hash, inner_scope_hash);
     
     // Cleanup
     storage::invalidate_true_id_hierarchy(&file_hash, &outer_true_id).unwrap();
@@ -75,13 +75,13 @@ fn true_id_fails_when_parent_metadata_missing() {
     // Save file content
     storage::save_file_content(&file_hash, content).unwrap();
     
-    // Simulate outer anchor region "234" but DO NOT save metadata
-    let outer_region = b"234";
-    let outer_region_hash = hash::compute(outer_region);
-    let outer_true_id = hash::compute(format!("{}_{}", file_hash, outer_region_hash).as_bytes());
+    // Simulate outer anchor scope "234" but DO NOT save metadata
+    let outer_scope = b"234";
+    let outer_scope_hash = hash::compute(outer_scope);
+    let outer_true_id = hash::compute(format!("{}_{}", file_hash, outer_scope_hash).as_bytes());
     
-    // Save region content but NOT metadata (to simulate corruption)
-    storage::save_region_content(&file_hash, &outer_true_id, outer_region).unwrap();
+    // Save scope content but NOT metadata (to simulate corruption)
+    storage::save_scope_content(&file_hash, &outer_true_id, outer_scope).unwrap();
     
     // Save label mapping pointing to outer_true_id
     storage::save_label_mapping("test_label_missing_meta", &outer_true_id).unwrap();

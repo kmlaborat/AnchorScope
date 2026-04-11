@@ -22,7 +22,7 @@ pub struct AnchorMeta {
 pub struct BufferMeta {
     pub true_id: String,
     pub parent_true_id: Option<String>,
-    pub region_hash: String,
+    pub scope_hash: String,
     pub anchor: String,  // The anchor text that was matched
 }
 
@@ -124,9 +124,9 @@ pub fn save_buffer_content(file_hash: &str, true_id: &str, content: &[u8]) -> Re
         .map_err(|e| io_error_to_spec(e, "write failure"))
 }
 
-/// Save matched region content to {TMPDIR}/anchorscope/{file_hash}/{true_id}/content.
+/// Save matched scope content to {TMPDIR}/anchorscope/{file_hash}/{true_id}/content.
 /// This is an alias for save_buffer_content for clarity.
-pub fn save_region_content(file_hash: &str, true_id: &str, content: &[u8]) -> Result<(), String> {
+pub fn save_scope_content(file_hash: &str, true_id: &str, content: &[u8]) -> Result<(), String> {
     save_buffer_content(file_hash, true_id, content)
 }
 
@@ -301,7 +301,7 @@ pub fn load_buffer_metadata(file_hash: &str, true_id: &str) -> Result<BufferMeta
                 .map_err(|e| format!("IO_ERROR: buffer metadata corrupted: {}", e))?;
             
             // Verify the true_id matches
-            if meta.true_id == true_id || meta.region_hash == true_id {
+            if meta.true_id == true_id || meta.scope_hash == true_id {
                 return Ok(meta);
             }
             
@@ -329,7 +329,7 @@ mod tests {
         let buffer_meta = BufferMeta {
             true_id: true_id.to_string(),
             parent_true_id: None,
-            region_hash: "region_hash_dummy".to_string(),
+            scope_hash: "scope_hash_dummy".to_string(),
             anchor: "test_anchor".to_string(),
         };
         save_buffer_metadata(&file_hash, true_id, &buffer_meta).expect("save buffer metadata");
@@ -457,7 +457,7 @@ fn search_true_id_in_dir(file_hash: &str, target_true_id: &str) -> Option<Result
         if metadata_path.exists() {
             match load_buffer_metadata(file_hash, target_true_id) {
                 Ok(meta) => {
-                    if meta.true_id == target_true_id || meta.region_hash == target_true_id {
+                    if meta.true_id == target_true_id || meta.scope_hash == target_true_id {
                         return Some(load_anchor_meta_from_buffer(file_hash, &meta));
                     }
                 }
@@ -484,13 +484,13 @@ fn load_anchor_meta_from_buffer(file_hash: &str, buffer_meta: &BufferMeta) -> Re
     let file = fs::read_to_string(&source_path)
         .map_err(|e| io_error_to_spec(e, "read failure"))?;
     
-    let region_hash = buffer_meta.region_hash.clone();
+    let scope_hash = buffer_meta.scope_hash.clone();
     let anchor = buffer_meta.anchor.clone();
     
     Ok(AnchorMeta {
         file,
         anchor,
-        hash: region_hash,
+        hash: scope_hash,
         line_range: (0, 0),
     })
 }

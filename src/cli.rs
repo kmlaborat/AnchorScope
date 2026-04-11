@@ -33,7 +33,7 @@ pub enum Command {
         label: Option<String>,
     },
 
-    /// Replace anchor region if expected_hash matches.
+    /// Replace anchor scope if expected_hash matches.
     Write {
         /// Path to the target file.
         #[arg(long)]
@@ -47,7 +47,7 @@ pub enum Command {
         #[arg(long, conflicts_with_all = ["label"])]
         anchor_file: Option<String>,
 
-        /// Expected xxh3 hash (hex) of the matched region.
+        /// Expected xxh3 hash (hex) of the matched scope.
         #[arg(long, conflicts_with = "label")]
         expected_hash: Option<String>,
 
@@ -55,7 +55,7 @@ pub enum Command {
         #[arg(long, conflicts_with_all = ["anchor", "anchor_file", "expected_hash"])]
         label: Option<String>,
 
-        /// Replacement string (replaces the entire anchor region).
+        /// Replacement string (replaces the entire anchor scope).
         #[arg(long)]
         replacement: String,
 

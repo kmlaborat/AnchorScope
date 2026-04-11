@@ -254,7 +254,7 @@ mod tests {
         storage::save_buffer_metadata(&file_hash, &true_id, &storage::BufferMeta {
             true_id: true_id.to_string(),
             parent_true_id: None,
-            region_hash: crate::hash::compute(content),
+            scope_hash: crate::hash::compute(content),
             anchor: "test".to_string(),
         }).unwrap();
         storage::save_source_path(&file_hash, "/tmp/test.txt").unwrap();
@@ -280,7 +280,7 @@ mod tests {
         storage::save_buffer_metadata(&file_hash, &true_id, &storage::BufferMeta {
             true_id: true_id.to_string(),
             parent_true_id: None,
-            region_hash: crate::hash::compute(content),
+            scope_hash: crate::hash::compute(content),
             anchor: "test".to_string(),
         }).unwrap();
         storage::save_source_path(&file_hash, "/tmp/test.txt").unwrap();
@@ -311,7 +311,7 @@ mod tests {
         storage::save_buffer_metadata(&file_hash, &true_id, &storage::BufferMeta {
             true_id: true_id.to_string(),
             parent_true_id: None,
-            region_hash: crate::hash::compute(content),
+            scope_hash: crate::hash::compute(content),
             anchor: "test".to_string(),
         }).unwrap();
         storage::save_source_path(&file_hash, "/tmp/test.txt").unwrap();
@@ -338,7 +338,7 @@ mod tests {
         storage::save_buffer_metadata(&file_hash, &true_id, &storage::BufferMeta {
             true_id: true_id.to_string(),
             parent_true_id: None,
-            region_hash: crate::hash::compute(content),
+            scope_hash: crate::hash::compute(content),
             anchor: "test".to_string(),
         }).unwrap();
         storage::save_source_path(&file_hash, "/tmp/test.txt").unwrap();
@@ -369,7 +369,7 @@ mod tests {
         storage::save_buffer_metadata(&file_hash, &true_id, &storage::BufferMeta {
             true_id: true_id.to_string(),
             parent_true_id: None,
-            region_hash: crate::hash::compute(content),
+            scope_hash: crate::hash::compute(content),
             anchor: "test".to_string(),
         }).unwrap();
         storage::save_source_path(&file_hash, "/tmp/test.txt").unwrap();
@@ -419,7 +419,7 @@ mod tests {
         storage::save_buffer_metadata(&file_hash, &true_id, &storage::BufferMeta {
             true_id: true_id.to_string(),
             parent_true_id: None,
-            region_hash: crate::hash::compute(content),
+            scope_hash: crate::hash::compute(content),
             anchor: "test".to_string(),
         }).unwrap();
         storage::save_source_path(&file_hash, "/tmp/test.txt").unwrap();
@@ -451,7 +451,7 @@ mod tests {
         storage::save_buffer_metadata(&file_hash, &true_id, &storage::BufferMeta {
             true_id: true_id.to_string(),
             parent_true_id: None,
-            region_hash: crate::hash::compute(content),
+            scope_hash: crate::hash::compute(content),
             anchor: "test".to_string(),
         }).unwrap();
         storage::save_source_path(&file_hash, "/tmp/test.txt").unwrap();
