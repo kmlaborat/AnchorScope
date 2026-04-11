@@ -26,8 +26,34 @@ impl std::fmt::Display for MatchError {
     }
 }
 
+/// Normalize CRLF -> LF in place, modifying the input Vec<u8> directly.
+/// This avoids allocation when the input is already owned (Vec<u8>).
+/// Returns a slice view of the normalized content.
+/// 
+/// Note: This function modifies the input buffer. Callers must ensure
+/// they have ownership or can safely modify the data.
+pub fn normalize_line_endings_in_place(buffer: &mut Vec<u8>) -> &[u8] {
+    let mut write_idx = 0;
+    let mut i = 0;
+    let len = buffer.len();
+    
+    while i < len {
+        if buffer[i] == b'\r' && i + 1 < len && buffer[i + 1] == b'\n' {
+            // Skip CR, keep LF
+            i += 1;
+        } else {
+            buffer[write_idx] = buffer[i];
+            write_idx += 1;
+            i += 1;
+        }
+    }
+    
+    &buffer[..write_idx]
+}
+
 /// Normalize CRLF -> LF.
 /// This is the ONLY implicit normalization permitted by the spec.
+/// Returns a new Vec<u8> (allocates).
 pub fn normalize_line_endings(raw: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(raw.len());
     let mut i = 0;
