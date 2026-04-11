@@ -98,7 +98,7 @@ pub fn execute(
         let expected_hash = match expected_hash {
             Some(h) => h.to_string(),
             None => {
-                eprintln!("NO_EXPECTED_HASH");
+                eprintln!("NO_REPLACEMENT");
                 return 1;
             }
         };

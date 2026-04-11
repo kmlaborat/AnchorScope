@@ -278,8 +278,8 @@ pub fn execute(
                         return 1;
                     }
                     Err(storage::AmbiguousAnchorError { true_id: _tid, locations: _ }) => {
-                        // SPEC requires the literal error string
-                        eprintln!("AMBIGUOUS_ANCHOR");
+                        // DUPLICATE_TRUE_ID per SPEC §3.2
+                        eprintln!("DUPLICATE_TRUE_ID");
                         return 1;
                     }
                 }

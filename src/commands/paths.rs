@@ -47,7 +47,7 @@ pub fn execute(label: &Option<String>, true_id: Option<&str>) -> i32 {
         (Some(l), None) => execute_for_label(l),
         (None, Some(tid)) => execute_for_true_id(tid),
         (Some(_), Some(_)) => {
-            eprintln!("AMBIGUOUS_ANCHOR");
+            eprintln!("IO_ERROR: mutually exclusive options: --label and --true-id");
             return 1;
         }
         (None, None) => {

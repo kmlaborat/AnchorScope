@@ -98,7 +98,7 @@ fn execute_stdout(label: &Option<String>, true_id: Option<&str>, out: bool, in_f
         },
         (None, Some(tid)) => tid.to_string(),
         (Some(_), Some(_)) => {
-            eprintln!("AMBIGUOUS_ANCHOR");
+            eprintln!("IO_ERROR: mutually exclusive options: --label and --true-id");
             return 1;
         }
         (None, None) => {
@@ -152,7 +152,7 @@ fn execute_file_io(label: &Option<String>, true_id: Option<&str>, tool: &str) ->
         },
         (None, Some(tid)) => tid.to_string(),
         (Some(_), Some(_)) => {
-            eprintln!("AMBIGUOUS_ANCHOR");
+            eprintln!("IO_ERROR: mutually exclusive options: --label and --true-id");
             return 1;
         }
         (None, None) => {
