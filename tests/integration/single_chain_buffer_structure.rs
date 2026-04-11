@@ -5,7 +5,7 @@ fn nested_read_creates_single_hierarchical_chain() {
     // Create a file with nested anchors where inner anchor is in the matched region of outer
     // Using Python-like syntax where the inner function is inside the outer function body
     let content = "def outer():\n    x = 1\n    def inner():\n        pass\n";
-    let (temp_dir, file_path) = create_temp_file(content);
+    let (_temp_dir, file_path) = create_temp_file(content);
     
     // Level 1: read outer anchor "def outer"
     let out1 = run_anchorscope(&[
@@ -106,7 +106,7 @@ fn nested_read_creates_single_hierarchical_chain() {
 #[test]
 fn three_level_nesting_write_cleans_up_correctly() {
     let content = "def a():\n    def b():\n        def c():\n            pass\n";
-    let (temp_dir, file_path) = create_temp_file(content);
+    let (_temp_dir, file_path) = create_temp_file(content);
     
     // Level 1: read "def a"
     let out1 = run_anchorscope(&[
