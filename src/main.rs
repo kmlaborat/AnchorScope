@@ -52,6 +52,7 @@ fn main() {
             expected_hash,
             label,
             replacement,
+            from_replacement,
         } => commands::write::execute(
             &file,
             anchor.as_deref(),
@@ -59,6 +60,7 @@ fn main() {
             expected_hash.as_deref(),
             label.as_deref(),
             &replacement,
+            from_replacement,
         ),
         Command::Label {
             name,

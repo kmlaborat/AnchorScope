@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::PathBuf;
 use crate::storage;
 use crate::buffer_path;
 use crate::config;
@@ -16,8 +17,22 @@ pub fn execute(
     // If label is provided, read from buffer content instead of file
     let (target_file, anchor_bytes, buffer_parent_true_id) = if let Some(label_name) = label {
         // Label mode: resolve label to buffer content
+        // The label_name can be either:
+        // 1. A label alias (stored in labels/)
+        // 2. A true_id (used directly as label name)
+        // First try to load from labels, if not found, treat as true_id
         let true_id = match storage::load_label_target(label_name) {
             Ok(tid) => tid,
+            Err(ref e) if e.starts_with("IO_ERROR: file not found") => {
+                // Not a label, try as true_id directly
+                // Check if this true_id exists in the buffer
+                if check_buffer_exists(label_name) {
+                    label_name.to_string()
+                } else {
+                    eprintln!("IO_ERROR: buffer metadata for true_id '{}' not found", label_name);
+                    return 1;
+                }
+            }
             Err(e) => {
                 eprintln!("{}", e);
                 return 1;
@@ -37,6 +52,10 @@ pub fn execute(
         // Load source path
         let source_path = match storage::load_source_path(&file_hash) {
             Ok(p) => p,
+            Err(ref e) if e == "DUPLICATE_TRUE_ID" => {
+                eprintln!("DUPLICATE_TRUE_ID");
+                return 1;
+            }
             Err(e) => {
                 eprintln!("IO_ERROR: cannot load source path: {}", e);
                 return 1;
@@ -152,6 +171,10 @@ pub fn execute(
                 // Load parent buffer metadata to obtain its region hash
                 let parent_region_hash = match storage::load_buffer_metadata(&file_hash, &parent_tid) {
                     Ok(meta) => meta.region_hash,
+                    Err(ref e) if e == "DUPLICATE_TRUE_ID" => {
+                        eprintln!("DUPLICATE_TRUE_ID");
+                        return 1;
+                    }
                     Err(e) => {
                         eprintln!("IO_ERROR: parent buffer metadata corrupted: {}", e);
                         return 1;
@@ -252,9 +275,9 @@ pub fn execute(
                         eprintln!("IO_ERROR: parent directory for true_id '{}' not found", parent_true_id);
                         return 1;
                     }
-                    Err(storage::AmbiguousAnchorError { true_id: tid, locations }) => {
-                        let loc_str: Vec<String> = locations.iter().map(|p| p.display().to_string()).collect();
-                        eprintln!("ERROR: Ambiguous anchor detection for parent true_id '{}': same ID found in multiple locations: {}", tid, loc_str.join(", "));
+                    Err(storage::AmbiguousAnchorError { true_id: _tid, locations: _ }) => {
+                        // SPEC requires the literal error string
+                        eprintln!("AMBIGUOUS_ANCHOR");
                         return 1;
                     }
                 }
@@ -452,4 +475,101 @@ mod tests {
         storage::invalidate_label("tmp_label");
         let _ = std::fs::remove_file(tmp_file_path);
     }
+}
+
+/// Check if the identifier exists as a buffer true_id
+/// Recursively searches through all levels of nesting
+fn check_buffer_exists(identifier: &str) -> bool {
+    let temp_dir = std::env::temp_dir().join("anchorscope");
+    
+    // Check old location first (v1.1.0 compatibility)
+    let anchors_dir = temp_dir.join("anchors");
+    let old_path = anchors_dir.join(format!("{}.json", identifier));
+    
+    if old_path.exists() {
+        return true;
+    }
+    
+    // Search all file_hash directories
+    if let Ok(entries) = std::fs::read_dir(&temp_dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                let file_hash = entry.file_name();
+                let file_hash_str = file_hash.to_string_lossy();
+                
+                // Skip special subdirectories
+                if file_hash_str == "anchors" || file_hash_str == "labels" {
+                    continue;
+                }
+                
+                // Search recursively in this file_hash directory
+                if check_buffer_exists_in_dir(&file_hash_str, identifier) {
+                    return true;
+                }
+            }
+        }
+    }
+    
+    false
+}
+
+/// Recursively search for identifier in a file_hash directory
+/// Checks flat location: {file_hash}/{true_id}/content
+/// Checks nested locations: {file_hash}/{parent}/{true_id}/content (recursively)
+fn check_buffer_exists_in_dir(file_hash: &str, identifier: &str) -> bool {
+    // Check flat: {file_hash}/{true_id}/content
+    let flat_content_path = buffer_path::true_id_dir(file_hash, identifier).join("content");
+    if flat_content_path.exists() {
+        return true;
+    }
+    
+    // Check nested locations recursively
+    let file_dir = buffer_path::file_dir(file_hash);
+    if let Ok(entries) = std::fs::read_dir(&file_dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                let child_dir = entry.path();
+                let child_name = entry.file_name();
+                
+                // Check if {child_dir}/{identifier}/content exists
+                let nested_content_path = child_dir.join(identifier).join("content");
+                if nested_content_path.exists() {
+                    return true;
+                }
+                
+                // Recursively check in this child directory
+                if check_buffer_exists_in_dir_recursive(&child_dir.to_string_lossy(), identifier) {
+                    return true;
+                }
+            }
+        }
+    }
+    
+    false
+}
+
+/// Recursively search for identifier starting from a given directory
+fn check_buffer_exists_in_dir_recursive(dir_path: &str, identifier: &str) -> bool {
+    let dir = PathBuf::from(dir_path);
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                let child_dir = entry.path();
+                let _child_name = entry.file_name();
+                
+                // Check if {child_dir}/{identifier}/content exists
+                let nested_content_path = child_dir.join(identifier).join("content");
+                if nested_content_path.exists() {
+                    return true;
+                }
+                
+                // Recursively check in this child directory
+                if check_buffer_exists_in_dir_recursive(child_dir.to_string_lossy().as_ref(), identifier) {
+                    return true;
+                }
+            }
+        }
+    }
+    
+    false
 }

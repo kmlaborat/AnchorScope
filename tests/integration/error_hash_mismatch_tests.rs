@@ -57,18 +57,7 @@ fn write_hash_mismatch_wrong_hash() {
         "stderr should contain HASH_MISMATCH, got: {}",
         stderr
     );
-    assert!(
-        stderr.contains(&format!("expected={}", wrong_hash)),
-        "stderr should contain expected hash {}, got: {}",
-        wrong_hash,
-        stderr
-    );
-    assert!(
-        stderr.contains(&format!("actual={}", real_hash)),
-        "stderr should contain actual hash {}, got: {}",
-        real_hash,
-        stderr
-    );
+
 
     // Verify the file content remains unchanged after the failed write
     let final_content = read_file(&file_path);

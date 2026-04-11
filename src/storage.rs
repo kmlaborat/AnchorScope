@@ -189,7 +189,7 @@ pub fn find_true_id_dir(file_hash: &str, true_id: &str) -> Result<Option<PathBuf
 
 /// Check if true_id exists in the directory tree.
 /// Returns (found, count) where count is the number of matching directories.
-fn file_hash_exists_in_dir_with_count(dir: &Path, true_id: &str) -> (bool, usize) {
+pub fn file_hash_exists_in_dir_with_count(dir: &Path, true_id: &str) -> (bool, usize) {
     use std::collections::VecDeque;
     
     let mut count = 0;
@@ -545,4 +545,20 @@ pub fn invalidate_true_id_hierarchy(file_hash: &str, true_id: &str) -> Result<()
 pub fn invalidate_label(name: &str) {
     let path = buffer_path::labels_dir().join(format!("{}.json", name));
     let _ = fs::remove_file(path);
+}
+
+/// Check if a true_id has duplicates within a specific file_hash directory.
+/// Returns Err("DUPLICATE_TRUE_ID") if found, Ok(()) otherwise.
+pub fn check_duplicate_true_id_in_file_hash(file_hash: &str, true_id: &str) -> Result<(), String> {
+    match find_true_id_dir(file_hash, true_id) {
+        Ok(_) => Ok(()),  // Single location - OK
+        Err(_) => Err("DUPLICATE_TRUE_ID".to_string()),  // Multiple locations - error
+    }
+}
+
+/// Load replacement content from {file_hash}/{true_id}/replacement.
+pub fn load_replacement_content(file_hash: &str, true_id: &str) -> Result<Vec<u8>, String> {
+    let replacement_path = buffer_path::true_id_dir(file_hash, true_id).join("replacement");
+    fs::read(&replacement_path)
+        .map_err(|e| io_error_to_spec(e, "replacement not found"))
 }

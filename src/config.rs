@@ -26,8 +26,10 @@ pub fn max_depth() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn test_max_depth_default() {
         // Save original state
         let was_set = std::env::var("ANCHORSCOPE_MAX_DEPTH").is_ok();
@@ -44,6 +46,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_max_depth_env_override() {
         // Test with env var set
         std::env::set_var("ANCHORSCOPE_MAX_DEPTH", "7");
@@ -54,6 +57,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_max_depth_clamped() {
         // Test clamping to max 100
         std::env::set_var("ANCHORSCOPE_MAX_DEPTH", "500");
@@ -64,6 +68,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_max_depth_invalid_value() {
         // Test with invalid value
         std::env::set_var("ANCHORSCOPE_MAX_DEPTH", "invalid");

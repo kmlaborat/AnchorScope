@@ -58,6 +58,11 @@ pub enum Command {
         /// Replacement string (replaces the entire anchor region).
         #[arg(long)]
         replacement: String,
+
+        /// Use buffer's replacement file as replacement content.
+        /// Cannot be used with --replacement.
+        #[arg(long, conflicts_with = "replacement")]
+        from_replacement: bool,
     },
 
     /// Assign a human-readable name to a True ID.
