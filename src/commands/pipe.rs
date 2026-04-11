@@ -3,6 +3,7 @@ use crate::storage;
 use crate::buffer_path;
 use crate::matcher;
 use crate::error::AnchorScopeError;
+use crate::security::validate_tool_name;
 
 /// Stream content to stdout for a True ID.
 pub fn stream_content_to_stdout(true_id: &str) -> Result<(), AnchorScopeError> {
@@ -137,6 +138,12 @@ fn execute_file_io(label: &Option<String>, true_id: Option<&str>, tool: &str) ->
             return 1;
         }
     };
+    
+    // Validate tool name BEFORE execution
+    if let Err(e) = validate_tool_name(tool) {
+        eprintln!("{}", e.to_spec_string());
+        return 1;
+    }
     
     // Get content path
     let file_hash = match storage::file_hash_for_true_id(&true_id_str) {

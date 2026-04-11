@@ -5,6 +5,7 @@ mod config;
 mod error;
 mod hash;
 mod matcher;
+mod security;
 mod storage;
 
 use clap::Parser;

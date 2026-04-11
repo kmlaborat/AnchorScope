@@ -23,6 +23,43 @@ pub fn max_depth() -> usize {
     DEFAULT_MAX_DEPTH
 }
 
+/// Security configuration
+pub mod security {
+    use std::env;
+    
+    /// Maximum file size (default 100MB)
+    pub fn max_file_size() -> u64 {
+        if let Ok(val) = env::var("ANCHORSCOPE_MAX_FILE_SIZE") {
+            if let Ok(size) = val.parse::<u64>() {
+                return size.max(1).min(1024 * 1024 * 1024); // Clamp: 1B to 1GB
+            }
+        }
+        100 * 1024 * 1024  // 100MB
+    }
+    
+    /// Maximum nesting depth (default 100)
+    pub fn max_nesting_depth() -> usize {
+        if let Ok(val) = env::var("ANCHORSCOPE_MAX_NESTING_DEPTH") {
+            if let Ok(depth) = val.parse::<usize>() {
+                return depth.max(1).min(1000);
+            }
+        }
+        100
+    }
+    
+    /// Allowed tools for pipe command
+    pub fn allowed_tools() -> Vec<String> {
+        if let Ok(val) = env::var("ANCHORSCOPE_ALLOWED_TOOLS") {
+            return val.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+        vec!["sed".to_string(), "awk".to_string(), "perl".to_string(),
+             "python3".to_string(), "node".to_string()]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

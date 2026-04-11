@@ -1,5 +1,28 @@
 use std::fs;
+use tempfile::NamedTempFile;
 use crate::storage;
+use crate::error::AnchorScopeError;
+use crate::security::{validate_file_path, validate_file_size, ensure_no_symlinks};
+
+/// Write file atomically using temp file and rename
+fn atomic_write_file(path: &std::path::Path, content: &[u8]) -> Result<(), AnchorScopeError> {
+    use std::io::Write;
+    
+    let parent = path.parent()
+        .ok_or(AnchorScopeError::WriteFailure)?;
+    
+    let mut temp_file = NamedTempFile::new_in(parent)
+        .map_err(|_| AnchorScopeError::WriteFailure)?;
+    
+    temp_file.write_all(content)
+        .map_err(|_| AnchorScopeError::WriteFailure)?;
+    
+    // Atomic rename
+    temp_file.persist(path)
+        .map_err(|_| AnchorScopeError::WriteFailure)?;
+    
+    Ok(())
+}
 
 /// Write: locate anchor, verify hash, replace, write back. Exit 0 or 1.
 pub fn execute(
@@ -21,6 +44,15 @@ pub fn execute(
         eprintln!("NO_REPLACEMENT");
         return 1;
     }
+    
+    // Get current working directory for path validation
+    let working_dir = match std::env::current_dir() {
+        Ok(d) => d,
+        Err(_) => {
+            eprintln!("IO_ERROR: cannot get current directory");
+            return 1;
+        }
+    };
 
     // Resolve file, anchor_bytes, expected_hash, and track label for cleanup
     let (target_file, anchor_bytes, expected_hash, used_label, replacement_bytes): (String, Vec<u8>, String, Option<String>, Vec<u8>) = if let Some(label_name) = label {
@@ -88,6 +120,38 @@ pub fn execute(
         (meta.file, meta.anchor.into_bytes(), meta.hash, Some(label_name.to_string()), rep_bytes)
     } else {
         // Direct mode: use provided args (must have anchor and expected_hash)
+        
+        // Validate target file path
+        let target_path = match validate_file_path(file_path, &working_dir) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("{}", e.to_spec_string());
+                return 1;
+            }
+        };
+        
+        // Validate file size
+        if let Err(e) = validate_file_size(&target_path) {
+            eprintln!("{}", e.to_spec_string());
+            return 1;
+        }
+        
+        // Validate anchor file if provided
+        if let Some(ref anchor_file_path) = anchor_file {
+            let anchor_path = match validate_file_path(anchor_file_path, &working_dir) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("{}", e.to_spec_string());
+                    return 1;
+                }
+            };
+            
+            if let Err(e) = ensure_no_symlinks(&anchor_path) {
+                eprintln!("{}", e.to_spec_string());
+                return 1;
+            }
+        }
+        
         let anchor_bytes = match crate::load_anchor(anchor, anchor_file) {
             Ok(a) => a,
             Err(e) => {
@@ -109,7 +173,7 @@ pub fn execute(
         } else {
             crate::matcher::normalize_line_endings(replacement.as_bytes())
         };
-        (file_path.to_string(), anchor_bytes, expected_hash, None, rep_bytes)
+        (target_path.to_string_lossy().to_string(), anchor_bytes, expected_hash, None, rep_bytes)
     };
 
     let raw = match fs::read(&target_file) {
@@ -152,7 +216,8 @@ pub fn execute(
     result.extend_from_slice(&replacement_bytes);
     result.extend_from_slice(&normalized[m.byte_end..]);
 
-    match fs::write(&target_file, &result) {
+    // Write file atomically using temp file and rename
+    match atomic_write_file(std::path::Path::new(&target_file), &result) {
         Ok(_) => {
             // Clean up buffer artifacts BEFORE invalidating the label
             if let Some(ref label_name) = used_label {
@@ -179,7 +244,7 @@ pub fn execute(
             0
         }
         Err(e) => {
-            eprintln!("{}", crate::map_io_error_write(e));
+            eprintln!("{}", e.to_spec_string());
             1
         }
     }

@@ -30,3 +30,5 @@ mod label_command_tests;
 mod storage_lifecycle_tests;
 #[cfg(test)]
 mod single_chain_buffer_structure;
+#[cfg(test)]
+mod security_tests;

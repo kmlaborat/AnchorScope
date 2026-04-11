@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use crate::storage;
 use crate::buffer_path;
 use crate::config;
+use crate::error::AnchorScopeError;
+use crate::security::{validate_file_path, validate_file_size, ensure_no_symlinks};
 
 /// Read: locate anchor, print location + hash. Exit 0 on success, 1 on error.
 /// If target is a buffer copy (file_hash/content or file_hash/true_id/content),
@@ -15,6 +17,14 @@ pub fn execute(
 ) -> i32 {
     // Resolve target file and anchor bytes
     // If label is provided, read from buffer content instead of file
+    let working_dir = match std::env::current_dir() {
+        Ok(d) => d,
+        Err(_) => {
+            eprintln!("IO_ERROR: cannot get current directory");
+            return 1;
+        }
+    };
+    
     let (target_file, anchor_bytes, buffer_parent_true_id) = if let Some(label_name) = label {
         // Label mode: resolve label to buffer content
         // The label_name can be either:
@@ -80,11 +90,36 @@ pub fn execute(
         };
         
         // Normalize the anchor
-        let anchor_bytes = match crate::load_anchor(anchor, anchor_file) {
-            Ok(a) => a,
-            Err(e) => {
-                eprintln!("{}", e);
+        let anchor_bytes = if let Some(ref anchor_file_path) = anchor_file {
+            // Validate anchor file path
+            let anchor_path = match validate_file_path(anchor_file_path, &working_dir) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("{}", e.to_spec_string());
+                    return 1;
+                }
+            };
+            
+            // Check for symlinks
+            if let Err(e) = ensure_no_symlinks(&anchor_path) {
+                eprintln!("{}", e.to_spec_string());
                 return 1;
+            }
+            
+            match crate::load_anchor(anchor, Some(&anchor_path.to_string_lossy())) {
+                Ok(a) => a,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    return 1;
+                }
+            }
+        } else {
+            match crate::load_anchor(anchor, None) {
+                Ok(a) => a,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    return 1;
+                }
             }
         };
         
@@ -92,15 +127,55 @@ pub fn execute(
         (source_path, anchor_bytes, Some((buffer_content, true_id)))
     } else {
         // Direct mode: use provided args
-        let anchor_bytes = match crate::load_anchor(anchor, anchor_file) {
-            Ok(a) => a,
+        let target_path = match validate_file_path(file_path, &working_dir) {
+            Ok(p) => p,
             Err(e) => {
-                eprintln!("{}", e);
+                eprintln!("{}", e.to_spec_string());
                 return 1;
             }
         };
         
-        (file_path.to_string(), anchor_bytes, None)
+        // Validate file size
+        if let Err(e) = validate_file_size(&target_path) {
+            eprintln!("{}", e.to_spec_string());
+            return 1;
+        }
+        
+        // Handle anchor bytes for direct mode
+        let anchor_bytes = if let Some(ref anchor_file_path) = anchor_file {
+            // Validate anchor file path
+            let anchor_path = match validate_file_path(anchor_file_path, &working_dir) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("{}", e.to_spec_string());
+                    return 1;
+                }
+            };
+            
+            // Check for symlinks
+            if let Err(e) = ensure_no_symlinks(&anchor_path) {
+                eprintln!("{}", e.to_spec_string());
+                return 1;
+            }
+            
+            match crate::load_anchor(anchor, Some(&anchor_path.to_string_lossy())) {
+                Ok(a) => a,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    return 1;
+                }
+            }
+        } else {
+            match crate::load_anchor(anchor, None) {
+                Ok(a) => a,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    return 1;
+                }
+            }
+        };
+        
+        (target_path.to_string_lossy().to_string(), anchor_bytes, None)
     };
 
     // Read and validate file
