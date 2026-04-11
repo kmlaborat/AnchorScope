@@ -23,16 +23,11 @@ fn read_multiple_matches_two_occurrences() {
         "read command should have failed for multiple matches"
     );
 
-    // Assert stderr starts with "MULTIPLE_MATCHES (" and includes count 2
+    // Assert stderr is exactly "MULTIPLE_MATCHES"
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.starts_with("MULTIPLE_MATCHES ("),
-        "stderr should start with MULTIPLE_MATCHES (), got: {}",
-        stderr
-    );
-    assert!(
-        stderr.contains("(2)"),
-        "stderr should indicate 2 matches, got: {}",
+        stderr.trim() == "MULTIPLE_MATCHES",
+        "stderr should be exactly MULTIPLE_MATCHES, got: {}",
         stderr
     );
 }
@@ -62,16 +57,11 @@ fn read_multiple_matches_overlapping() {
         "read command should have failed for overlapping matches"
     );
 
-    // Expect MULTIPLE_MATCHES (2)
+    // Expect MULTIPLE_MATCHES
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.starts_with("MULTIPLE_MATCHES ("),
-        "stderr should start with MULTIPLE_MATCHES (), got: {}",
-        stderr
-    );
-    assert!(
-        stderr.contains("(2)"),
-        "stderr should indicate 2 matches, got: {}",
+        stderr.trim() == "MULTIPLE_MATCHES",
+        "stderr should be exactly MULTIPLE_MATCHES, got: {}",
         stderr
     );
 }
@@ -106,16 +96,11 @@ fn write_multiple_matches_rejected() {
         "write command should have failed for multiple matches"
     );
 
-    // Assert stderr starts with "MULTIPLE_MATCHES (" and includes count 2
+    // Assert stderr is exactly "MULTIPLE_MATCHES"
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.starts_with("MULTIPLE_MATCHES ("),
-        "stderr should start with MULTIPLE_MATCHES (), got: {}",
-        stderr
-    );
-    assert!(
-        stderr.contains("(2)"),
-        "stderr should indicate 2 matches, got: {}",
+        stderr.trim() == "MULTIPLE_MATCHES",
+        "stderr should be exactly MULTIPLE_MATCHES, got: {}",
         stderr
     );
 }

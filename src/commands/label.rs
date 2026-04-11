@@ -100,7 +100,7 @@ fn find_true_id_in_dir(dir: &std::path::Path, true_id: &str) -> bool {
     match storage::load_label_target(name) {
         Ok(existing_true_id) => {
             if existing_true_id != true_id {
-                eprintln!("LABEL_EXISTS: label '{}' already points to a different true_id '{}'", name, existing_true_id);
+                eprintln!("LABEL_EXISTS");
                 return 1;
             }
             // Same true_id, allow (idempotent)

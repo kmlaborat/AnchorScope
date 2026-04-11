@@ -180,6 +180,8 @@ pub fn execute(
                         return 1;
                     }
                 };
+// True ID per SPEC §3.2: xxh3_64(hex(parent_hash) || 0x5F || hex(child_hash))
+                // format! with "{}_{}" produces the same byte sequence as byte concatenation with underscore (0x5F)
                 let region_hash = crate::hash::compute(region);
                 (crate::hash::compute(format!("{}_{}", parent_region_hash, region_hash).as_bytes()), Some(parent_tid.clone()))
             } else {
@@ -456,7 +458,7 @@ mod tests {
         assert_eq!(exit_code, 0);
         // Find inner true_id generated (should be stored as a label? we can locate by scanning buffers)
         // Load all buffers to find one whose parent_true_id is outer_true_id
-        let inner_file_hash = file_hash.clone(); // same file_hash used
+        let _inner_file_hash = file_hash.clone(); // same file_hash used
         // Directly load inner buffer metadata using expected true_id
         let inner_region_hash = hash::compute(b"3");
         let expected_true_id = hash::compute(format!("{}_{}", outer_region_hash, inner_region_hash).as_bytes());
@@ -529,7 +531,7 @@ fn check_buffer_exists_in_dir(file_hash: &str, identifier: &str) -> bool {
         for entry in entries.flatten() {
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 let child_dir = entry.path();
-                let child_name = entry.file_name();
+                let _ = entry.file_name();
                 
                 // Check if {child_dir}/{identifier}/content exists
                 let nested_content_path = child_dir.join(identifier).join("content");
@@ -555,7 +557,7 @@ fn check_buffer_exists_in_dir_recursive(dir_path: &str, identifier: &str) -> boo
         for entry in entries.flatten() {
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 let child_dir = entry.path();
-                let _child_name = entry.file_name();
+                let _ = entry.file_name();
                 
                 // Check if {child_dir}/{identifier}/content exists
                 let nested_content_path = child_dir.join(identifier).join("content");

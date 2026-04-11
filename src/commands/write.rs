@@ -1,6 +1,5 @@
 use std::fs;
 use crate::storage;
-use crate::buffer_path;
 
 /// Write: locate anchor, verify hash, replace, write back. Exit 0 or 1.
 pub fn execute(
@@ -17,6 +16,11 @@ pub fn execute(
         eprintln!("AMBIGUOUS_REPLACEMENT");
         return 1;
     }
+    // If neither source is provided, report missing replacement
+    if !from_replacement && replacement.is_empty() {
+        eprintln!("NO_REPLACEMENT");
+        return 1;
+    }
 
     // Resolve file, anchor_bytes, expected_hash, and track label for cleanup
     let (target_file, anchor_bytes, expected_hash, used_label, replacement_bytes): (String, Vec<u8>, String, Option<String>, Vec<u8>) = if let Some(label_name) = label {
@@ -30,50 +34,21 @@ pub fn execute(
         };
         
         // Check for DUPLICATE_TRUE_ID per SPEC: same true_id in multiple locations within the same file_hash directory
-        // Find all file_hash directories where this true_id exists, then check each for duplicates
-        let temp_dir = std::env::temp_dir();
-        let anchorscope_dir = temp_dir.join("anchorscope");
-        let mut duplicate_check_error: Option<String> = None;
-        
-        if let Ok(entries) = std::fs::read_dir(&anchorscope_dir) {
-            for entry in entries.flatten() {
-                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                    let file_hash = entry.file_name();
-                    let file_hash_str = file_hash.to_string_lossy();
-                    
-                    // Skip special subdirectories like "anchors" and "labels"
-                    if file_hash_str == "anchors" || file_hash_str == "labels" {
-                        continue;
-                    }
-                    
-                    // Check if true_id exists in this file_hash directory (including nested)
-                    // We need to use a simpler approach since find_true_id_in_dir_recursive is private
-                    // Use file_hash_exists_in_dir_with_count which returns (found, count)
-                    let (found, count) = crate::storage::file_hash_exists_in_dir_with_count(
-                        &buffer_path::file_dir(&file_hash_str),
-                        &true_id
-                    );
-                    if found && count > 1 {
-                        // true_id found in this file_hash, now check for duplicates within this file_hash
-                        match storage::check_duplicate_true_id_in_file_hash(&file_hash_str, &true_id) {
-                            Ok(_) => {
-                                // Single location - OK
-                            }
-                            Err(_) => {
-                                // Multiple locations within same file_hash - DUPLICATE_TRUE_ID
-                                duplicate_check_error = Some("DUPLICATE_TRUE_ID".to_string());
-                                break;
-                            }
-                        }
-                    }
+        // Only check if the true_id exists in the buffer (not for old-format v1.1.0 anchors)
+        if let Ok(file_hash) = storage::file_hash_for_true_id(&true_id) {
+            // Only check for duplicates within this file_hash
+            match storage::check_duplicate_true_id_in_file_hash(&file_hash, &true_id) {
+                Ok(_) => {
+                    // Single location - OK
+                }
+                Err(_) => {
+                    eprintln!("DUPLICATE_TRUE_ID");
+                    return 1;
                 }
             }
         }
-        
-        if let Some(err) = duplicate_check_error {
-            eprintln!("{}", err);
-            return 1;
-        }
+        // If file_hash_for_true_id fails, the true_id doesn't exist in the buffer
+        // (e.g., old v1.1.0 format), so skip the duplicate check
         
         let meta = match crate::storage::load_anchor_metadata_by_true_id(&true_id) {
             Ok(m) => m,
@@ -83,19 +58,26 @@ pub fn execute(
             }
         };
         
-        let meta = match crate::storage::load_anchor_metadata_by_true_id(&true_id) {
-            Ok(m) => m,
-            Err(e) => {
-                eprintln!("{}", e);
-                return 1;
-            }
-        };
+        // Get file_hash for this true_id (required for loading replacement content)
+        // For v1.1.0 format anchors (stored in anchors/ directory), file_hash_for_true_id will fail
+        // In that case, --from-replacement is not supported
+        let file_hash_or_error = storage::file_hash_for_true_id(&true_id);
+        
         // Determine replacement content
         let rep_bytes = if from_replacement {
-            match crate::storage::load_replacement_content(&meta.file, &true_id) {
-                Ok(c) => c,
-                Err(e) => {
-                    eprintln!("{}", e);
+            match file_hash_or_error {
+                Ok(file_hash) => {
+                    match crate::storage::load_replacement_content(&file_hash, &true_id) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            eprintln!("{}", e);
+                            return 1;
+                        }
+                    }
+                }
+                Err(_) => {
+                    // v1.1.0 format anchor - no replacement file exists
+                    eprintln!("IO_ERROR: --from-replacement not supported for v1.1.0 format anchors");
                     return 1;
                 }
             }
@@ -116,7 +98,7 @@ pub fn execute(
         let expected_hash = match expected_hash {
             Some(h) => h.to_string(),
             None => {
-                eprintln!("ERROR: expected-hash required when not using label");
+                eprintln!("NO_EXPECTED_HASH");
                 return 1;
             }
         };

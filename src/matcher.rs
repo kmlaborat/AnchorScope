@@ -21,7 +21,7 @@ impl std::fmt::Display for MatchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MatchError::NoMatch => write!(f, "NO_MATCH"),
-            MatchError::MultipleMatches(n) => write!(f, "MULTIPLE_MATCHES ({})", n),
+            MatchError::MultipleMatches(n) => write!(f, "MULTIPLE_MATCHES"),
         }
     }
 }
