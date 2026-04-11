@@ -8,12 +8,12 @@ mod matcher;
 mod security;
 mod storage;
 
+use crate::error::AnchorScopeError;
 use clap::Parser;
 use cli::{Cli, Command};
 use matcher::normalize_line_endings;
 use std::fs;
 use std::process;
-use crate::error::AnchorScopeError;
 
 pub fn map_io_error_read(e: std::io::Error) -> String {
     AnchorScopeError::from(e).to_spec_string()
@@ -40,7 +40,12 @@ fn main() {
             anchor,
             anchor_file,
             label,
-        } => commands::read::execute(&file, anchor.as_deref(), anchor_file.as_deref(), label.as_deref()),
+        } => commands::read::execute(
+            &file,
+            anchor.as_deref(),
+            anchor_file.as_deref(),
+            label.as_deref(),
+        ),
         Command::Write {
             file,
             anchor,
@@ -58,10 +63,7 @@ fn main() {
             &replacement,
             from_replacement,
         ),
-        Command::Label {
-            name,
-            true_id,
-        } => commands::label::execute(&name, &true_id),
+        Command::Label { name, true_id } => commands::label::execute(&name, &true_id),
         Command::Tree { file } => commands::tree::execute(&file),
         Command::Pipe {
             label,
@@ -70,11 +72,17 @@ fn main() {
             in_flag,
             file_io,
             tool,
-        } => commands::pipe::execute(&label, true_id.as_deref(), out, in_flag, file_io, tool.as_deref()),
-        Command::Paths {
-            label,
-            true_id,
-        } => commands::paths::execute(&label, true_id.as_deref()),
+            tool_args,
+        } => commands::pipe::execute(
+            &label,
+            true_id.as_deref(),
+            out,
+            in_flag,
+            file_io,
+            tool.as_deref(),
+            tool_args.as_deref(),
+        ),
+        Command::Paths { label, true_id } => commands::paths::execute(&label, true_id.as_deref()),
     };
 
     process::exit(exit_code);
@@ -84,7 +92,9 @@ fn main() {
 /// Returns normalized anchor bytes (Vec<u8>) or error string.
 pub fn load_anchor(anchor: Option<&str>, anchor_file: Option<&str>) -> Result<Vec<u8>, String> {
     match (anchor, anchor_file) {
-        (None, None) => return Err("ERROR: either --anchor or --anchor-file must be provided".to_string()),
+        (None, None) => {
+            return Err("ERROR: either --anchor or --anchor-file must be provided".to_string())
+        }
         (Some(_), Some(_)) => return Err("IO_ERROR: mutually exclusive options".to_string()),
         _ => {}
     }

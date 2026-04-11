@@ -186,23 +186,43 @@ fn write_using_label() {
 
     // 1. read to get the internal label (auto-generated)
     let out_read = run_anchorscope(&[
-        "read", "--file", file_path.to_str().unwrap(), "--anchor", anchor
+        "read",
+        "--file",
+        file_path.to_str().unwrap(),
+        "--anchor",
+        anchor,
     ]);
-    assert!(out_read.status.success(), "read failed: {}", String::from_utf8_lossy(&out_read.stderr));
+    assert!(
+        out_read.status.success(),
+        "read failed: {}",
+        String::from_utf8_lossy(&out_read.stderr)
+    );
     let res = parse_output(&String::from_utf8_lossy(&out_read.stdout));
     let true_id = res.get("true_id").unwrap().clone();
 
     // 2. create human-readable label
-    let out_label = run_anchorscope(&[
-        "label", "--name", "my_anchor", "--true-id", &true_id
-    ]);
-    assert!(out_label.status.success(), "label failed: {}", String::from_utf8_lossy(&out_label.stderr));
+    let out_label = run_anchorscope(&["label", "--name", "my_anchor", "--true-id", &true_id]);
+    assert!(
+        out_label.status.success(),
+        "label failed: {}",
+        String::from_utf8_lossy(&out_label.stderr)
+    );
 
     // 3. write using label
     let out_write = run_anchorscope(&[
-        "write", "--label", "my_anchor", "--replacement", "new", "--file", file_path.to_str().unwrap()
+        "write",
+        "--label",
+        "my_anchor",
+        "--replacement",
+        "new",
+        "--file",
+        file_path.to_str().unwrap(),
     ]);
-    assert!(out_write.status.success(), "write via label failed: {}", String::from_utf8_lossy(&out_write.stderr));
+    assert!(
+        out_write.status.success(),
+        "write via label failed: {}",
+        String::from_utf8_lossy(&out_write.stderr)
+    );
 
     // 4. verify file changed
     let final_content = read_file(&file_path);

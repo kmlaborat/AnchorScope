@@ -237,7 +237,8 @@ fn anchor_file_with_crlf_normalization() {
     let temp_dir = TempDir::new().expect("failed to create temp dir");
     let anchor_file_path = temp_dir.path().join("anchor_crlf.txt");
     let anchor_content_with_crlf = "TARGET\r\n";
-    fs::write(&anchor_file_path, anchor_content_with_crlf).expect("failed to write anchor file with CRLF");
+    fs::write(&anchor_file_path, anchor_content_with_crlf)
+        .expect("failed to write anchor file with CRLF");
 
     // Run the read command with anchor file containing CRLF
     let output = run_anchorscope(&[

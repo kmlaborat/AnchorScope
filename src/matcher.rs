@@ -29,14 +29,14 @@ impl std::fmt::Display for MatchError {
 /// Normalize CRLF -> LF in place, modifying the input Vec<u8> directly.
 /// This avoids allocation when the input is already owned (Vec<u8>).
 /// Returns a slice view of the normalized content.
-/// 
+///
 /// Note: This function modifies the input buffer. Callers must ensure
 /// they have ownership or can safely modify the data.
 pub fn normalize_line_endings_in_place(buffer: &mut Vec<u8>) -> &[u8] {
     let mut write_idx = 0;
     let mut i = 0;
     let len = buffer.len();
-    
+
     while i < len {
         if buffer[i] == b'\r' && i + 1 < len && buffer[i + 1] == b'\n' {
             // Skip CR, keep LF
@@ -47,7 +47,7 @@ pub fn normalize_line_endings_in_place(buffer: &mut Vec<u8>) -> &[u8] {
             i += 1;
         }
     }
-    
+
     &buffer[..write_idx]
 }
 
@@ -121,7 +121,7 @@ pub fn extract_function_body(content: &[u8], anchor_start: usize, anchor_end: us
     let normalized = normalize_line_endings(content);
     let mut start = anchor_start;
     let mut end = anchor_end;
-    
+
     // Find the start of the function definition (look backwards for "def ")
     let search_start = if start >= 10 { start - 10 } else { 0 };
     let search_scope = &normalized[search_start..start];
@@ -130,13 +130,15 @@ pub fn extract_function_body(content: &[u8], anchor_start: usize, anchor_end: us
         let actual_def_pos = search_start + def_pos;
         if actual_def_pos > 0 {
             // Find the previous newline
-            let prev_newline = normalized[..actual_def_pos].iter().rposition(|&b| b == b'\n');
+            let prev_newline = normalized[..actual_def_pos]
+                .iter()
+                .rposition(|&b| b == b'\n');
             start = prev_newline.map(|p| p + 1).unwrap_or(0);
         } else {
             start = actual_def_pos;
         }
     }
-    
+
     // Find the end of the function (look for next def statement or end of file)
     let mut current_pos = end;
     while current_pos < normalized.len() {
@@ -149,33 +151,38 @@ pub fn extract_function_body(content: &[u8], anchor_start: usize, anchor_end: us
         }
         let newline_pos = current_pos + next_newline.unwrap();
         let line_end = newline_pos + 1;
-        
+
         // Check if the next line starts with "def " (next function)
         let next_line_start = line_end;
         if next_line_start >= normalized.len() {
             end = normalized.len();
             break;
         }
-        
+
         // Skip blank lines and comments
         let remaining = &normalized[next_line_start..];
         if !remaining.is_empty() {
             // Find first non-whitespace character
-            let first_non_ws = remaining.iter().skip_while(|&&b| b == b' ' || b == b'\t' || b == b'\n').position(|&b| b != b'\n');
+            let first_non_ws = remaining
+                .iter()
+                .skip_while(|&&b| b == b' ' || b == b'\t' || b == b'\n')
+                .position(|&b| b != b'\n');
             if let Some(pos) = first_non_ws {
                 let check_pos = next_line_start + pos;
                 // Check if line starts with "def "
-                if check_pos + 4 <= normalized.len() && &normalized[check_pos..check_pos + 4] == b"def " {
+                if check_pos + 4 <= normalized.len()
+                    && &normalized[check_pos..check_pos + 4] == b"def "
+                {
                     // Found next function definition, so this is the end of current function
                     end = current_pos;
                     break;
                 }
             }
         }
-        
+
         current_pos = line_end;
     }
-    
+
     normalized[start..end].to_vec()
 }
 

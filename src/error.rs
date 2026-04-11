@@ -37,7 +37,7 @@ pub enum AnchorScopeError {
     ReadFailure,
 
     #[error("IO_ERROR: write failure")]
-    WriteFailure,
+    WriteFailure(std::io::Error),
 
     #[error("IO_ERROR: buffer metadata for true_id '{0}' not found")]
     BufferMetadataNotFound(String),
@@ -109,36 +109,68 @@ impl AnchorScopeError {
             AnchorScopeError::PermissionDenied => "IO_ERROR: permission denied".to_string(),
             AnchorScopeError::InvalidUtf8 => "IO_ERROR: invalid UTF-8".to_string(),
             AnchorScopeError::ReadFailure => "IO_ERROR: read failure".to_string(),
-            AnchorScopeError::WriteFailure => "IO_ERROR: write failure".to_string(),
-            AnchorScopeError::BufferMetadataNotFound(_) => "IO_ERROR: buffer metadata for true_id not found".to_string(),
-            AnchorScopeError::ParentBufferMetadataCorrupted(_) => "IO_ERROR: parent buffer metadata corrupted".to_string(),
-            AnchorScopeError::CannotLoadSourcePath(_) => "IO_ERROR: cannot load source path".to_string(),
-            AnchorScopeError::CannotSaveFileContent(_) => "IO_ERROR: cannot save file content".to_string(),
-            AnchorScopeError::CannotSaveSourcePath(_) => "IO_ERROR: cannot save source path".to_string(),
-            AnchorScopeError::CannotSaveScopeContent(_) => "IO_ERROR: cannot save scope content".to_string(),
-            AnchorScopeError::CannotSaveBufferMetadata(_) => "IO_ERROR: cannot save buffer metadata".to_string(),
-            AnchorScopeError::JsonSerializationFailed(_) => "IO_ERROR: JSON serialization failed".to_string(),
-            AnchorScopeError::LabelMappingCorrupted(_) => "IO_ERROR: label mapping corrupted".to_string(),
-            AnchorScopeError::CannotLoadBufferContent => "IO_ERROR: cannot load buffer content".to_string(),
-            AnchorScopeError::ParentDirectoryNotFound(_) => "IO_ERROR: parent directory for true_id not found".to_string(),
-            AnchorScopeError::MaximumNestingDepthExceeded(_) => "IO_ERROR: maximum nesting depth exceeded".to_string(),
+            AnchorScopeError::WriteFailure(e) => format!("IO_ERROR: write failure: {}", e.kind()),
+            AnchorScopeError::BufferMetadataNotFound(_) => {
+                "IO_ERROR: buffer metadata for true_id not found".to_string()
+            }
+            AnchorScopeError::ParentBufferMetadataCorrupted(_) => {
+                "IO_ERROR: parent buffer metadata corrupted".to_string()
+            }
+            AnchorScopeError::CannotLoadSourcePath(_) => {
+                "IO_ERROR: cannot load source path".to_string()
+            }
+            AnchorScopeError::CannotSaveFileContent(_) => {
+                "IO_ERROR: cannot save file content".to_string()
+            }
+            AnchorScopeError::CannotSaveSourcePath(_) => {
+                "IO_ERROR: cannot save source path".to_string()
+            }
+            AnchorScopeError::CannotSaveScopeContent(_) => {
+                "IO_ERROR: cannot save scope content".to_string()
+            }
+            AnchorScopeError::CannotSaveBufferMetadata(_) => {
+                "IO_ERROR: cannot save buffer metadata".to_string()
+            }
+            AnchorScopeError::JsonSerializationFailed(_) => {
+                "IO_ERROR: JSON serialization failed".to_string()
+            }
+            AnchorScopeError::LabelMappingCorrupted(_) => {
+                "IO_ERROR: label mapping corrupted".to_string()
+            }
+            AnchorScopeError::CannotLoadBufferContent => {
+                "IO_ERROR: cannot load buffer content".to_string()
+            }
+            AnchorScopeError::ParentDirectoryNotFound(_) => {
+                "IO_ERROR: parent directory for true_id not found".to_string()
+            }
+            AnchorScopeError::MaximumNestingDepthExceeded(_) => {
+                "IO_ERROR: maximum nesting depth exceeded".to_string()
+            }
             AnchorScopeError::ExternalToolFailed => "IO_ERROR: external tool failed".to_string(),
-            AnchorScopeError::CannotExecuteExternalTool => "IO_ERROR: cannot execute external tool".to_string(),
-            AnchorScopeError::CannotCreateTempDirectory => "IO_ERROR: cannot create temporary directory".to_string(),
+            AnchorScopeError::CannotExecuteExternalTool => {
+                "IO_ERROR: cannot execute external tool".to_string()
+            }
+            AnchorScopeError::CannotCreateTempDirectory => {
+                "IO_ERROR: cannot create temporary directory".to_string()
+            }
             AnchorScopeError::BufferNotFound => "IO_ERROR: buffer not found".to_string(),
             AnchorScopeError::ReplacementNotFound => "IO_ERROR: replacement not found".to_string(),
-            AnchorScopeError::LabelMappingNotFound(_) => "IO_ERROR: label mapping not found".to_string(),
+            AnchorScopeError::LabelMappingNotFound(_) => {
+                "IO_ERROR: label mapping not found".to_string()
+            }
         }
     }
 }
 
-/// Convert std::io::Error to AnchorScopeError (read version)
+/// Convert std::io::Error to AnchorScopeError
 impl From<std::io::Error> for AnchorScopeError {
     fn from(err: std::io::Error) -> Self {
+        // Distinguish between read and write errors
+        // For write operations, NotFound is mapped to WriteFailure for backward compatibility
         match err.kind() {
-            std::io::ErrorKind::NotFound => AnchorScopeError::FileNotFound,
+            std::io::ErrorKind::NotFound => AnchorScopeError::WriteFailure(err),
             std::io::ErrorKind::PermissionDenied => AnchorScopeError::PermissionDenied,
-            _ => AnchorScopeError::ReadFailure,
+            _ => AnchorScopeError::WriteFailure(err),
         }
     }
 }
@@ -166,18 +198,13 @@ impl AnchorScopeError {
     }
 }
 
-/// Convert std::io::Error to AnchorScopeError for write operations
-/// NotFound is mapped to WriteFailure for backward compatibility with SPEC
+/// Internal helper - kept for compatibility with old code
+#[allow(dead_code)]
 pub fn from_io_error_write(err: std::io::Error) -> AnchorScopeError {
-    match err.kind() {
-        std::io::ErrorKind::NotFound => AnchorScopeError::WriteFailure,
-        std::io::ErrorKind::PermissionDenied => AnchorScopeError::PermissionDenied,
-        _ => AnchorScopeError::WriteFailure,
-    }
+    AnchorScopeError::from(err)
 }
 
-/// Internal helper - kept for compatibility with old code that may pass context
 #[allow(dead_code)]
 pub fn from_io_error_write_with_context(err: std::io::Error, _context: &str) -> AnchorScopeError {
-    from_io_error_write(err)
+    AnchorScopeError::from(err)
 }

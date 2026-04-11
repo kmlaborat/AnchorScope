@@ -6,13 +6,7 @@ fn read_io_error_file_not_found() {
     let non_existent_file = "/nonexistent_path_12345/file.txt";
 
     // Run the read command on a file that doesn't exist
-    let output = run_anchorscope(&[
-        "read",
-        "--file",
-        non_existent_file,
-        "--anchor",
-        "ANCHOR",
-    ]);
+    let output = run_anchorscope(&["read", "--file", non_existent_file, "--anchor", "ANCHOR"]);
 
     // Assert exit code is 1 (failure)
     assert!(

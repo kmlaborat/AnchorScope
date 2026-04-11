@@ -108,6 +108,10 @@ pub enum Command {
         /// External tool command to execute in file-io mode.
         #[arg(long)]
         tool: Option<String>,
+
+        /// Arguments to pass to the tool (space-separated).
+        #[arg(long, requires = "tool", allow_hyphen_values = true)]
+        tool_args: Option<String>,
     },
 
     /// Return file paths of content and replacement for a True ID or alias.

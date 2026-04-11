@@ -1,7 +1,7 @@
-use std::path::PathBuf;
-use crate::storage;
 use crate::buffer_path;
 use crate::error::AnchorScopeError;
+use crate::storage;
+use std::path::PathBuf;
 
 /// Result of paths command.
 #[derive(Debug, Clone)]
@@ -20,16 +20,16 @@ pub fn execute_for_label(label: &str) -> Result<PathsResult, AnchorScopeError> {
 pub fn execute_for_true_id(true_id: &str) -> Result<PathsResult, AnchorScopeError> {
     // Find the file_hash containing this true_id
     let file_hash = storage::file_hash_for_true_id(true_id)?;
-    
+
     // Build paths
     let content_path = buffer_path::true_id_dir(&file_hash, true_id).join("content");
     let replacement_path = buffer_path::true_id_dir(&file_hash, true_id).join("replacement");
-    
+
     // Verify content file exists
     if !content_path.exists() {
         return Err(AnchorScopeError::FileNotFound);
     }
-    
+
     Ok(PathsResult {
         content_path,
         replacement_path,
@@ -50,7 +50,7 @@ pub fn execute(label: &Option<String>, true_id: Option<&str>) -> i32 {
             return 1;
         }
     };
-    
+
     match result {
         Ok(paths) => {
             println!("content:     {}", paths.content_path.display());
@@ -75,29 +75,35 @@ mod tests {
         let content = b"test content";
         let file_hash = hash::compute(content);
         let true_id = "test_true_id_123";
-        
+
         // Save buffer content
         storage::save_file_content(&file_hash, content).unwrap();
         storage::save_buffer_content(&file_hash, &true_id, content).unwrap();
-        storage::save_buffer_metadata(&file_hash, &true_id, &storage::BufferMeta {
-            true_id: true_id.to_string(),
-            parent_true_id: None,
-            scope_hash: hash::compute(content),
-            anchor: "test".to_string(),
-        }).unwrap();
+        storage::save_buffer_metadata(
+            &file_hash,
+            &true_id,
+            &storage::BufferMeta {
+                true_id: true_id.to_string(),
+                parent_true_id: None,
+                scope_hash: hash::compute(content),
+                anchor: "test".to_string(),
+            },
+        )
+        .unwrap();
         storage::save_source_path(&file_hash, "/tmp/test.txt").unwrap();
-        
+
         // Execute paths command
         let result = execute_for_true_id(&true_id).unwrap();
-        
+
         // Verify content path
         let expected_content_path = buffer_path::true_id_dir(&file_hash, &true_id).join("content");
         assert_eq!(result.content_path, expected_content_path);
-        
+
         // Verify replacement path (may not exist)
-        let expected_replacement_path = buffer_path::true_id_dir(&file_hash, &true_id).join("replacement");
+        let expected_replacement_path =
+            buffer_path::true_id_dir(&file_hash, &true_id).join("replacement");
         assert_eq!(result.replacement_path, expected_replacement_path);
-        
+
         // Cleanup
         storage::invalidate_true_id_hierarchy(&file_hash, &true_id).unwrap();
     }
@@ -108,19 +114,19 @@ mod tests {
         let content = b"test content";
         let file_hash = hash::compute(content);
         let true_id = "test_true_id_456";
-        
+
         storage::save_label_mapping("my_function", &true_id).unwrap();
         storage::save_file_content(&file_hash, content).unwrap();
         storage::save_buffer_content(&file_hash, &true_id, content).unwrap();
         storage::save_source_path(&file_hash, "/tmp/test.txt").unwrap();
-        
+
         // Execute paths command with label
         let result = execute_for_label("my_function");
-        
+
         // Should resolve to same true_id
         let expected_content_path = buffer_path::true_id_dir(&file_hash, &true_id).join("content");
         assert_eq!(result.unwrap().content_path, expected_content_path);
-        
+
         // Cleanup
         storage::invalidate_label("my_function");
         storage::invalidate_true_id_hierarchy(&file_hash, &true_id).unwrap();

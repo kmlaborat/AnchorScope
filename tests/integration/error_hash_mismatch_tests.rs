@@ -58,7 +58,6 @@ fn write_hash_mismatch_wrong_hash() {
         stderr
     );
 
-
     // Verify the file content remains unchanged after the failed write
     let final_content = read_file(&file_path);
     assert_eq!(final_content, content, "file should remain unchanged");
