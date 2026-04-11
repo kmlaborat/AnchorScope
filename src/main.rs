@@ -65,6 +65,18 @@ fn main() {
             true_id,
         } => commands::label::execute(&name, &true_id),
         Command::Tree { file } => commands::tree::execute(&file),
+        Command::Pipe {
+            label,
+            true_id,
+            out,
+            in_flag,
+            file_io,
+            tool,
+        } => commands::pipe::execute(&label, true_id.as_deref(), out, in_flag, file_io, tool.as_deref()),
+        Command::Paths {
+            label,
+            true_id,
+        } => commands::paths::execute(&label, true_id.as_deref()),
     };
 
     process::exit(exit_code);
