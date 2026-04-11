@@ -143,6 +143,29 @@ impl From<std::io::Error> for AnchorScopeError {
     }
 }
 
+/// PartialEq<String> for backward compatibility with string-based error comparison
+/// Allows comparing AnchorScopeError with SPEC error strings
+impl PartialEq<String> for AnchorScopeError {
+    fn eq(&self, other: &String) -> bool {
+        self.to_spec_string() == *other
+    }
+}
+
+/// PartialEq<str> for backward compatibility with string-based error comparison
+impl PartialEq<str> for AnchorScopeError {
+    fn eq(&self, other: &str) -> bool {
+        self.to_spec_string() == other
+    }
+}
+
+/// Extension methods for AnchorScopeError
+impl AnchorScopeError {
+    /// Check if the error string starts with a given prefix
+    pub fn starts_with(&self, prefix: &str) -> bool {
+        self.to_spec_string().starts_with(prefix)
+    }
+}
+
 /// Convert std::io::Error to AnchorScopeError for write operations
 /// NotFound is mapped to WriteFailure for backward compatibility with SPEC
 pub fn from_io_error_write(err: std::io::Error) -> AnchorScopeError {
@@ -151,4 +174,10 @@ pub fn from_io_error_write(err: std::io::Error) -> AnchorScopeError {
         std::io::ErrorKind::PermissionDenied => AnchorScopeError::PermissionDenied,
         _ => AnchorScopeError::WriteFailure,
     }
+}
+
+/// Internal helper - kept for compatibility with old code that may pass context
+#[allow(dead_code)]
+pub fn from_io_error_write_with_context(err: std::io::Error, _context: &str) -> AnchorScopeError {
+    from_io_error_write(err)
 }

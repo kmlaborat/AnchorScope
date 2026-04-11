@@ -2,44 +2,33 @@ use std::io::{self, Read, Write};
 use crate::storage;
 use crate::buffer_path;
 use crate::matcher;
+use crate::error::AnchorScopeError;
 
 /// Stream content to stdout for a True ID.
-pub fn stream_content_to_stdout(true_id: &str) -> Result<(), String> {
-    let file_hash = match storage::file_hash_for_true_id(true_id) {
-        Ok(h) => h,
-        Err(e) => return Err(e),
-    };
+pub fn stream_content_to_stdout(true_id: &str) -> Result<(), AnchorScopeError> {
+    let file_hash = storage::file_hash_for_true_id(true_id)?;
     let content_path = buffer_path::true_id_dir(&file_hash, true_id).join("content");
     
     if !content_path.exists() {
-        return Err("IO_ERROR: file not found".to_string());
+        return Err(AnchorScopeError::FileNotFound);
     }
     
-    let content = match std::fs::read(&content_path) {
-        Ok(c) => c,
-        Err(_) => return Err("IO_ERROR: read failure".to_string()),
-    };
+    let content = std::fs::read(&content_path).map_err(|e| crate::error::from_io_error_write(e))?;
     
     let stdout = io::stdout();
     let mut handle = stdout.lock();
-    match handle.write_all(&content) {
-        Ok(()) => {}
-        Err(_) => return Err("IO_ERROR: write failure".to_string()),
-    }
+    handle.write_all(&content).map_err(|e| crate::error::from_io_error_write(e))?;
     
     Ok(())
 }
 
 /// Read from stdin and write to replacement file.
-pub fn read_from_stdin_and_write_replacement(true_id: &str, stdin_bytes: &[u8]) -> Result<(), String> {
-    let file_hash = match storage::file_hash_for_true_id(true_id) {
-        Ok(h) => h,
-        Err(e) => return Err(e),
-    };
+pub fn read_from_stdin_and_write_replacement(true_id: &str, stdin_bytes: &[u8]) -> Result<(), AnchorScopeError> {
+    let file_hash = storage::file_hash_for_true_id(true_id)?;
     
     // Validate UTF-8
     if std::str::from_utf8(stdin_bytes).is_err() {
-        return Err("IO_ERROR: invalid UTF-8".to_string());
+        return Err(AnchorScopeError::InvalidUtf8);
     }
     
     // Normalize CRLF -> LF
@@ -47,30 +36,21 @@ pub fn read_from_stdin_and_write_replacement(true_id: &str, stdin_bytes: &[u8]) 
     
     // Write to replacement file
     let replacement_path = buffer_path::true_id_dir(&file_hash, true_id).join("replacement");
-    match std::fs::write(&replacement_path, &normalized) {
-        Ok(()) => {}
-        Err(_) => return Err("IO_ERROR: write failure".to_string()),
-    }
+    std::fs::write(&replacement_path, &normalized).map_err(|e| crate::error::from_io_error_write(e))?;
     
     Ok(())
 }
 
 /// Validate and store replacement from external tool output file.
-fn validate_and_store_replacement(true_id: &str, output_path: &std::path::Path) -> Result<(), String> {
-    let file_hash = match storage::file_hash_for_true_id(true_id) {
-        Ok(h) => h,
-        Err(e) => return Err(e),
-    };
+fn validate_and_store_replacement(true_id: &str, output_path: &std::path::Path) -> Result<(), AnchorScopeError> {
+    let file_hash = storage::file_hash_for_true_id(true_id)?;
     
     // Read tool output
-    let content = match std::fs::read(output_path) {
-        Ok(c) => c,
-        Err(_) => return Err("IO_ERROR: read failure".to_string()),
-    };
+    let content = std::fs::read(output_path).map_err(|e| crate::error::from_io_error_write(e))?;
     
     // Validate UTF-8
     if std::str::from_utf8(&content).is_err() {
-        return Err("IO_ERROR: invalid UTF-8".to_string());
+        return Err(AnchorScopeError::InvalidUtf8);
     }
     
     // Normalize CRLF -> LF
@@ -78,10 +58,7 @@ fn validate_and_store_replacement(true_id: &str, output_path: &std::path::Path) 
     
     // Write to replacement file
     let replacement_path = buffer_path::true_id_dir(&file_hash, true_id).join("replacement");
-    match std::fs::write(&replacement_path, &normalized) {
-        Ok(()) => {}
-        Err(_) => return Err("IO_ERROR: write failure".to_string()),
-    }
+    std::fs::write(&replacement_path, &normalized).map_err(|e| crate::error::from_io_error_write(e))?;
     
     Ok(())
 }

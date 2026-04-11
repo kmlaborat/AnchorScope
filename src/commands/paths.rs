@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use crate::storage;
 use crate::buffer_path;
+use crate::error::AnchorScopeError;
 
 /// Result of paths command.
 #[derive(Debug, Clone)]
@@ -10,21 +11,15 @@ pub struct PathsResult {
 }
 
 /// Resolve label to true_id and call execute_for_true_id.
-pub fn execute_for_label(label: &str) -> Result<PathsResult, String> {
+pub fn execute_for_label(label: &str) -> Result<PathsResult, AnchorScopeError> {
     let true_id = storage::load_label_target(label)?;
     execute_for_true_id(&true_id)
 }
 
 /// Return content and replacement paths for a True ID.
-pub fn execute_for_true_id(true_id: &str) -> Result<PathsResult, String> {
+pub fn execute_for_true_id(true_id: &str) -> Result<PathsResult, AnchorScopeError> {
     // Find the file_hash containing this true_id
-    let file_hash = match storage::file_hash_for_true_id(true_id) {
-        Ok(h) => h,
-        Err(ref msg) if msg.starts_with("DUPLICATE_TRUE_ID") => {
-            return Err("DUPLICATE_TRUE_ID".to_string());
-        }
-        Err(e) => return Err(e),
-    };
+    let file_hash = storage::file_hash_for_true_id(true_id)?;
     
     // Build paths
     let content_path = buffer_path::true_id_dir(&file_hash, true_id).join("content");
@@ -32,7 +27,7 @@ pub fn execute_for_true_id(true_id: &str) -> Result<PathsResult, String> {
     
     // Verify content file exists
     if !content_path.exists() {
-        return Err("IO_ERROR: file not found".to_string());
+        return Err(AnchorScopeError::FileNotFound);
     }
     
     Ok(PathsResult {
