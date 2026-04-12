@@ -1,7 +1,9 @@
+use crate::buffer_path;
 use crate::error::AnchorScopeError;
 use crate::security::{ensure_no_symlinks, validate_file_path, validate_file_size};
 use crate::storage;
 use std::fs;
+use std::path::PathBuf;
 use tempfile::NamedTempFile;
 
 /// Write file atomically using temp file and rename
@@ -44,11 +46,12 @@ fn atomic_write_file(path: &std::path::Path, content: &[u8]) -> Result<(), Ancho
 
 /// Write: locate anchor, verify hash, replace, write back. Exit 0 or 1.
 pub fn execute(
-    file_path: &str,
+    file_path: Option<&str>,
     anchor: Option<&str>,
     anchor_file: Option<&str>,
     expected_hash: Option<&str>,
     label: Option<&str>,
+    true_id: Option<&str>,
     replacement: &str,
     from_replacement: bool,
 ) -> i32 {
@@ -62,8 +65,172 @@ pub fn execute(
         eprintln!("NO_REPLACEMENT");
         return 1;
     }
+    
+    // Handle true_id mode: write to buffer instead of file
+    if let Some(tid) = true_id {
+        if label.is_some() {
+            eprintln!("IO_ERROR: cannot specify both --label and --true-id");
+            return 1;
+        }
+        if file_path.is_some() {
+            eprintln!("IO_ERROR: cannot specify both --file and --true-id");
+            return 1;
+        }
+        if expected_hash.is_none() {
+            eprintln!("EXPECTED_HASH_REQUIRED");
+            return 1;
+        }
+        
+        // Load source path from buffer
+        let file_hash = match storage::file_hash_for_true_id(tid) {
+            Ok(h) => h,
+            Err(e) => {
+                eprintln!("{}", e);
+                return 1;
+            }
+        };
+        
+        let source_path = match storage::load_source_path(&file_hash) {
+            Ok(p) => p,
+            Err(ref e) if e == "DUPLICATE_TRUE_ID" => {
+                eprintln!("DUPLICATE_TRUE_ID");
+                return 1;
+            }
+            Err(e) => {
+                eprintln!("IO_ERROR: cannot load source path: {}", e);
+                return 1;
+            }
+        };
+        
+        // Load buffer metadata
+        let buffer_meta = match storage::load_buffer_metadata(&file_hash, tid) {
+            Ok(meta) => meta,
+            Err(ref e) if e == "DUPLICATE_TRUE_ID" => {
+                eprintln!("DUPLICATE_TRUE_ID");
+                return 1;
+            }
+            Err(e) => {
+                eprintln!("IO_ERROR: buffer metadata corrupted: {}", e);
+                return 1;
+            }
+        };
+        
+        // Verify expected hash matches the buffer's scope_hash
+        if expected_hash.unwrap() != buffer_meta.scope_hash {
+            eprintln!("HASH_MISMATCH");
+            return 1;
+        }
+        
+        // Get replacement bytes
+        let replacement_bytes = if from_replacement {
+            // Search for the true_id location using BFS to handle nested buffers
+            let file_dir = buffer_path::file_dir(&file_hash);
+            let mut queue = std::collections::VecDeque::new();
+            queue.push_back(file_dir);
+            
+            let replacement_path = 'outer: loop {
+                if let Some(current_dir) = queue.pop_front() {
+                    if let Ok(entries) = std::fs::read_dir(&current_dir) {
+                        for entry in entries.flatten() {
+                            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                                let child_dir = entry.path();
+                                let content_path = child_dir.join(tid).join("content");
+                                
+                                if content_path.exists() {
+                                    break 'outer child_dir.join(tid).join("replacement");
+                                }
+                                
+                                queue.push_back(child_dir);
+                            }
+                        }
+                    }
+                } else {
+                    // Not found, use flat path
+                    break 'outer buffer_path::true_id_dir(&file_hash, tid).join("replacement");
+                }
+            };
+            
+            match fs::read(&replacement_path) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    eprintln!("IO_ERROR: cannot read replacement file: {}", e);
+                    return 1;
+                }
+            }
+        } else {
+            replacement.as_bytes().to_vec()
+        };
+        
+        // Write to scope file
+        // For nested buffers, the scope is stored at {file_hash}/{parent_true_id}/{true_id}/content
+        // For flat buffers, it's at {file_hash}/{true_id}/content
+        let file_dir = buffer_path::file_dir(&file_hash);
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(file_dir);
+        
+        let true_id_dir = 'outer: loop {
+            if let Some(current_dir) = queue.pop_front() {
+                if let Ok(entries) = std::fs::read_dir(&current_dir) {
+                    for entry in entries.flatten() {
+                        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                            let child_dir = entry.path();
+                            let content_path = child_dir.join(tid).join("content");
+                            
+                            if content_path.exists() {
+                                break 'outer child_dir;
+                            }
+                            
+                            queue.push_back(child_dir);
+                        }
+                    }
+                }
+            } else {
+                // Not found, use flat path
+                break 'outer buffer_path::true_id_dir(&file_hash, tid);
+            }
+        };
+        
+        let scope_path = true_id_dir.join("content");
+        if let Err(e) = atomic_write_file(&scope_path, &replacement_bytes) {
+            eprintln!("{}", e);
+            return 1;
+        }
+        
+        // Update buffer metadata
+        let new_meta = storage::BufferMeta {
+            true_id: buffer_meta.true_id,
+            parent_true_id: buffer_meta.parent_true_id,
+            scope_hash: crate::hash::compute(&replacement_bytes),
+            anchor: buffer_meta.anchor,
+        };
+        if let Err(e) = storage::save_buffer_metadata(&file_hash, tid, &new_meta) {
+            eprintln!("IO_ERROR: cannot save buffer metadata: {}", e);
+            return 1;
+        }
+        
+        // Invalidate the hierarchy
+        storage::invalidate_true_id_hierarchy(&file_hash, tid).ok();
+        
+        // Write to original file as well
+        let file_path = PathBuf::from(&source_path);
+        if let Err(e) = atomic_write_file(&file_path, &replacement_bytes) {
+            eprintln!("{}", e);
+            return 1;
+        }
+        
+        println!("OK: buffer updated for true_id '{}'", tid);
+        return 0;
+    }
 
-    // Get current working directory for path validation
+    // File-based writing
+    let file_path = match file_path {
+        Some(fp) => fp,
+        None => {
+            eprintln!("IO_ERROR: must specify either --file or --true-id");
+            return 1;
+        }
+    };
+    
     let working_dir = match std::env::current_dir() {
         Ok(d) => d,
         Err(_) => {

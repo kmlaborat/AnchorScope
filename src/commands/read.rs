@@ -9,13 +9,98 @@ use std::path::PathBuf;
 /// If target is a buffer copy (file_hash/content or file_hash/true_id/content),
 /// creates nested buffer structure per SPEC §4.3.
 pub fn execute(
-    file_path: &str,
+    file_path: Option<&str>,
     anchor: Option<&str>,
     anchor_file: Option<&str>,
     label: Option<&str>,
+    true_id: Option<&str>,
 ) -> i32 {
-    // Resolve target file and anchor bytes
-    // If label is provided, read from buffer content instead of file
+    // Handle true_id mode: read from buffer instead of file
+    if let Some(tid) = true_id {
+        if label.is_some() {
+            eprintln!("IO_ERROR: cannot specify both --label and --true-id");
+            return 1;
+        }
+        if anchor_file.is_some() {
+            eprintln!("IO_ERROR: --anchor-file not allowed with --true-id");
+            return 1;
+        }
+        if anchor.is_none() {
+            eprintln!("ANCHOR_REQUIRED");
+            return 1;
+        }
+        
+        // Check if this true_id exists in the buffer
+        if !check_buffer_exists(tid) {
+            eprintln!(
+                "IO_ERROR: buffer metadata for true_id '{}' not found",
+                tid
+            );
+            return 1;
+        }
+        
+        // Find the file_hash that contains this true_id
+        let file_hash = match find_file_hash_for_true_id(tid) {
+            Some(h) => h,
+            None => {
+                eprintln!(
+                    "IO_ERROR: buffer metadata for true_id '{}' not found",
+                    tid
+                );
+                return 1;
+            }
+        };
+        
+        // Load source path from buffer
+        let source_path = match storage::load_source_path(&file_hash) {
+            Ok(p) => p,
+            Err(ref e) if e == "DUPLICATE_TRUE_ID" => {
+                eprintln!("DUPLICATE_TRUE_ID");
+                return 1;
+            }
+            Err(e) => {
+                eprintln!("IO_ERROR: cannot load source path: {}", e);
+                return 1;
+            }
+        };
+        
+        // Load buffer content
+        let buffer_content = match storage::load_buffer_content(&file_hash, tid) {
+            Ok(c) => c,
+            Err(_) => {
+                // Try nested location
+                let content = match find_nested_buffer_content(&file_hash, tid) {
+                    Some(c) => c,
+                    None => {
+                        eprintln!("IO_ERROR: cannot load buffer content");
+                        return 1;
+                    }
+                };
+                content
+            }
+        };
+        
+        if std::str::from_utf8(&buffer_content).is_err() {
+            eprintln!("IO_ERROR: invalid UTF-8");
+            return 1;
+        }
+        
+        let target_file = PathBuf::from(source_path);
+        let anchor_bytes = anchor.unwrap().as_bytes().to_vec();
+        let buffer_parent_true_id = Some((buffer_content, tid.to_string()));
+        
+        return process_read_with_target(target_file, anchor_bytes, buffer_parent_true_id);
+    }
+    
+    // File-based reading
+    let file_path = match file_path {
+        Some(fp) => fp,
+        None => {
+            eprintln!("IO_ERROR: must specify either --file or --true-id");
+            return 1;
+        }
+    };
+    
     let working_dir = match std::env::current_dir() {
         Ok(d) => d,
         Err(_) => {
@@ -584,7 +669,7 @@ mod tests {
         std::fs::write(&tmp_file_path, content).expect("write tmp file");
         storage::save_source_path(&file_hash, tmp_file_path.to_str().unwrap()).unwrap();
         // Execute read in label mode
-        let exit_code = execute("tmp_path", Some("3"), None, Some("tmp_label"));
+        let exit_code = execute(Some("tmp_path"), Some("3"), None, Some("tmp_label"), None);
         assert_eq!(exit_code, 0);
         // Find inner true_id generated (should be stored as a label? we can locate by scanning buffers)
         // Load all buffers to find one whose parent_true_id is outer_true_id
@@ -696,6 +781,179 @@ fn check_buffer_exists_in_dir(file_hash: &str, identifier: &str) -> bool {
     }
 
     false
+}
+
+/// Process read with pre-determined target file and anchor bytes.
+/// Used for true_id mode where buffer is already loaded.
+fn process_read_with_target(
+    target_file: PathBuf,
+    anchor_bytes: Vec<u8>,
+    buffer_parent_true_id: Option<(Vec<u8>, String)>,
+) -> i32 {
+    // Read and validate file
+    let raw = match fs::read(&target_file) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("{}", crate::map_io_error_read(e));
+            return 1;
+        }
+    };
+
+    // Enforce UTF-8 validity per SPEC
+    if std::str::from_utf8(&raw).is_err() {
+        eprintln!("IO_ERROR: invalid UTF-8");
+        return 1;
+    }
+
+    let normalized = if buffer_parent_true_id.is_some() {
+        // For label/true_id mode, use buffer content for matching
+        let content = if let Some((ref buffer_content, _)) = buffer_parent_true_id {
+            buffer_content.clone()
+        } else {
+            return 1;
+        };
+        crate::matcher::normalize_line_endings(&content)
+    } else {
+        crate::matcher::normalize_line_endings(&raw)
+    };
+    let anchor_bytes_normalized = crate::matcher::normalize_line_endings(&anchor_bytes);
+
+    match crate::matcher::resolve(&normalized, &anchor_bytes_normalized) {
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+        Ok(m) => {
+            let scope = &normalized[m.byte_start..m.byte_end];
+            let h = crate::hash::compute(scope);
+
+            // Compute file_hash from the raw file content (not buffer content)
+            let file_hash = crate::hash::compute(&raw);
+
+            // Check nesting depth limit when in true_id/label mode
+            if buffer_parent_true_id.is_some() {
+                if let Some((ref _ref_buffer_content, ref parent_tid)) = buffer_parent_true_id {
+                    let max_depth = config::max_depth();
+                    match calculate_nesting_depth(parent_tid, &file_hash) {
+                        Ok(depth) => {
+                            if depth >= max_depth - 1 {
+                                eprintln!(
+                                    "IO_ERROR: maximum nesting depth ({}) exceeded",
+                                    max_depth
+                                );
+                                return 1;
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("{}", e);
+                            return 1;
+                        }
+                    }
+                }
+            }
+
+            // Compute True ID with parent context if nested
+            let (true_id, parent_true_id) = if let Some((_ref_buffer_content, parent_tid)) =
+                buffer_parent_true_id
+            {
+                let parent_scope_hash = match storage::load_buffer_metadata(&file_hash, &parent_tid)
+                {
+                    Ok(meta) => meta.scope_hash,
+                    Err(ref e) if e == "DUPLICATE_TRUE_ID" => {
+                        eprintln!("DUPLICATE_TRUE_ID");
+                        return 1;
+                    }
+                    Err(e) => {
+                        eprintln!("IO_ERROR: parent buffer metadata corrupted: {}", e);
+                        return 1;
+                    }
+                };
+                let child_scope_hash = crate::hash::compute(scope);
+                (
+                    crate::hash::compute(
+                        format!("{}_{}", parent_scope_hash, child_scope_hash).as_bytes(),
+                    ),
+                    Some(parent_tid.clone()),
+                )
+            } else {
+                let child_scope_hash = crate::hash::compute(scope);
+                (
+                    crate::hash::compute(format!("{}_{}", file_hash, child_scope_hash).as_bytes()),
+                    None,
+                )
+            };
+
+            println!("start_line={}", m.start_line);
+            println!("end_line={}", m.end_line);
+            println!("hash={}", h);
+            println!("content={}", String::from_utf8_lossy(scope));
+            println!("true_id={}", &true_id);
+
+            let anchor_str_base = String::from_utf8_lossy(&anchor_bytes_normalized);
+            let anchor_str = anchor_str_base.to_string();
+
+            // Save anchor metadata per SPEC
+            {
+                let buffer_meta = storage::BufferMeta {
+                    true_id: true_id.clone(),
+                    parent_true_id: parent_true_id.clone(),
+                    scope_hash: h.clone(),
+                    anchor: anchor_str_base.to_string(),
+                };
+                
+                // Save content first
+                if let Some(ref parent_tid) = parent_true_id {
+                    // Save to nested directory
+                    let nested_dir = buffer_path::nested_true_id_dir(&file_hash, parent_tid, &true_id);
+                    if let Err(e) = std::fs::create_dir_all(&nested_dir) {
+                        eprintln!("IO_ERROR: cannot create directory {}: {}", nested_dir.display(), e);
+                        return 1;
+                    }
+                    let content_path = nested_dir.join("content");
+                    if let Err(e) = std::fs::write(&content_path, scope) {
+                        eprintln!("IO_ERROR: cannot write {}: {}", content_path.display(), e);
+                        return 1;
+                    }
+                } else {
+                    // Save to flat directory
+                    if let Err(e) = storage::save_scope_content(&file_hash, &true_id, scope) {
+                        eprintln!("{}", e);
+                        return 1;
+                    }
+                }
+                
+                // Save metadata
+                let metadata_result = if let Some(ref parent_tid) = parent_true_id {
+                    let nested_dir = buffer_path::nested_true_id_dir(&file_hash, parent_tid, &true_id);
+                    let metadata_path = nested_dir.join("metadata.json");
+                    let json = match serde_json::to_string_pretty(&buffer_meta) {
+                        Ok(j) => j,
+                        Err(_) => {
+                            eprintln!("IO_ERROR: JSON serialization failed for buffer metadata");
+                            return 1;
+                        }
+                    };
+                    if let Err(e) = std::fs::write(&metadata_path, &json) {
+                        eprintln!("IO_ERROR: cannot write {}: {}", metadata_path.display(), e);
+                        return 1;
+                    }
+                    Ok(())
+                } else {
+                    // Save to flat directory
+                    storage::save_buffer_metadata(&file_hash, &true_id, &buffer_meta)
+                };
+                if let Err(e) = metadata_result {
+                    eprintln!("{}", e);
+                    return 1;
+                }
+
+                // For v1.2.0: output both label (v1.1.0 compat) and true_id
+                println!("label={}", h);
+                println!("true_id={}", true_id);
+                0
+            }
+        }
+    }
 }
 
 /// Recursively search for identifier starting from a given directory

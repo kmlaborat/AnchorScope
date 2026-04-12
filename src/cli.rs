@@ -16,8 +16,8 @@ pub enum Command {
     /// Find anchor in file and return location + hash.
     Read {
         /// Path to the target file.
-        #[arg(long)]
-        file: String,
+        #[arg(long, conflicts_with = "true_id")]
+        file: Option<String>,
 
         /// Anchor string (exact, multi-line allowed via escape sequences).
         /// Pass the anchor as a raw argument; use $'...' in shell for \n.
@@ -29,34 +29,46 @@ pub enum Command {
         anchor_file: Option<String>,
 
         /// Use a human-readable label to identify the parent buffer anchor.
-        #[arg(long, conflicts_with_all = ["anchor_file"])]
+        #[arg(long, conflicts_with = "true_id")]
         label: Option<String>,
+
+        /// True ID (hash from read output). If specified, reads from buffer instead of file.
+        #[arg(long, conflicts_with_all = ["file", "anchor_file", "label"])]
+        true_id: Option<String>,
     },
 
     /// Replace anchor scope if expected_hash matches.
     Write {
         /// Path to the target file.
-        #[arg(long)]
-        file: String,
+        #[arg(long, conflicts_with = "true_id")]
+        file: Option<String>,
 
         /// Anchor string — must match exactly.
-        #[arg(long, conflicts_with_all = ["label"])]
+        /// Required when using --file, optional when using --true-id
+        #[arg(long, conflicts_with = "label")]
         anchor: Option<String>,
 
         /// Path to a file containing the anchor string.
-        #[arg(long, conflicts_with_all = ["label"])]
+        #[arg(long, conflicts_with = "label", conflicts_with_all = ["true_id"])]
         anchor_file: Option<String>,
 
         /// Expected xxh3 hash (hex) of the matched scope.
+        /// Required when using --true-id for buffer-based writing.
         #[arg(long, conflicts_with = "label")]
         expected_hash: Option<String>,
 
         /// Use a human-readable label to identify the anchor.
-        #[arg(long, conflicts_with_all = ["anchor", "anchor_file", "expected_hash"])]
+        #[arg(long, conflicts_with = "true_id")]
         label: Option<String>,
 
+        /// True ID (hash from read output). If specified, writes to buffer instead of file.
+        /// Cannot be used with --file, --anchor-file, or --label
+        /// --anchor is optional and can be used with --true-id
+        #[arg(long, conflicts_with_all = ["file", "anchor_file", "label"])]
+        true_id: Option<String>,
+
         /// Replacement string (replaces the entire anchor scope).
-        #[arg(long)]
+        #[arg(long, default_value = "")]
         replacement: String,
 
         /// Use buffer's replacement file as replacement content.
@@ -98,7 +110,7 @@ pub enum Command {
         out: bool,
 
         /// Read from stdin and write to replacement (default mode).
-        #[arg(long, conflicts_with_all = ["file_io", "tool", "out"])]
+        #[arg(long, conflicts_with_all = ["file_io", "tool", "out"], alias = "in")]
         in_flag: bool,
 
         /// File I/O mode: pass content path to external tool.

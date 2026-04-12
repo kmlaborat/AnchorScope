@@ -8,21 +8,49 @@ use std::io::{self, Read, Write};
 /// Stream content to stdout for a True ID.
 pub fn stream_content_to_stdout(true_id: &str) -> Result<(), AnchorScopeError> {
     let file_hash = storage::file_hash_for_true_id(true_id)?;
-    let content_path = buffer_path::true_id_dir(&file_hash, true_id).join("content");
-
-    if !content_path.exists() {
-        return Err(AnchorScopeError::FileNotFound);
+    
+    // Try flat location first
+    let flat_path = buffer_path::true_id_dir(&file_hash, true_id).join("content");
+    if flat_path.exists() {
+        let content = std::fs::read(&flat_path).map_err(|e| crate::error::from_io_error_write(e))?;
+        let stdout = io::stdout();
+        let mut handle = stdout.lock();
+        handle
+            .write_all(&content)
+            .map_err(|e| crate::error::from_io_error_write(e))?;
+        return Ok(());
     }
-
-    let content = std::fs::read(&content_path).map_err(|e| crate::error::from_io_error_write(e))?;
-
-    let stdout = io::stdout();
-    let mut handle = stdout.lock();
-    handle
-        .write_all(&content)
-        .map_err(|e| crate::error::from_io_error_write(e))?;
-
-    Ok(())
+    
+    // Search nested locations using BFS
+    let file_dir = buffer_path::file_dir(&file_hash);
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back(file_dir);
+    
+    while let Some(current_dir) = queue.pop_front() {
+        if let Ok(entries) = std::fs::read_dir(&current_dir) {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    let child_dir = entry.path();
+                    let content_path = child_dir.join(true_id).join("content");
+                    
+                    if content_path.exists() {
+                        let content = std::fs::read(&content_path)
+                            .map_err(|e| crate::error::from_io_error_write(e))?;
+                        let stdout = io::stdout();
+                        let mut handle = stdout.lock();
+                        handle
+                            .write_all(&content)
+                            .map_err(|e| crate::error::from_io_error_write(e))?;
+                        return Ok(());
+                    }
+                    
+                    queue.push_back(child_dir);
+                }
+            }
+        }
+    }
+    
+    Err(AnchorScopeError::FileNotFound)
 }
 
 /// Read from stdin and write to replacement file.
@@ -41,7 +69,35 @@ pub fn read_from_stdin_and_write_replacement(
     let normalized = matcher::normalize_line_endings(stdin_bytes);
 
     // Write to replacement file
-    let replacement_path = buffer_path::true_id_dir(&file_hash, true_id).join("replacement");
+    // Search for the true_id location using BFS to handle nested buffers
+    let file_dir = buffer_path::file_dir(&file_hash);
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back(file_dir);
+    
+    let true_id_dir = 'outer: loop {
+        if let Some(current_dir) = queue.pop_front() {
+            if let Ok(entries) = std::fs::read_dir(&current_dir) {
+                for entry in entries.flatten() {
+                    if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                        let child_dir = entry.path();
+                        let content_path = child_dir.join(true_id).join("content");
+                        
+                        if content_path.exists() {
+                            break 'outer child_dir;
+                        }
+                        
+                        queue.push_back(child_dir);
+                    }
+                }
+            }
+        } else {
+            // Not found, use flat path
+            break 'outer buffer_path::file_dir(&file_hash);
+        }
+    };
+    
+    // Write to replacement file (in same directory as content)
+    let replacement_path = true_id_dir.join(true_id).join("replacement");
     std::fs::write(&replacement_path, &normalized)
         .map_err(|e| crate::error::from_io_error_write(e))?;
 

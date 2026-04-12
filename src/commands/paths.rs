@@ -20,10 +20,37 @@ pub fn execute_for_label(label: &str) -> Result<PathsResult, AnchorScopeError> {
 pub fn execute_for_true_id(true_id: &str) -> Result<PathsResult, AnchorScopeError> {
     // Find the file_hash containing this true_id
     let file_hash = storage::file_hash_for_true_id(true_id)?;
-
-    // Build paths
-    let content_path = buffer_path::true_id_dir(&file_hash, true_id).join("content");
-    let replacement_path = buffer_path::true_id_dir(&file_hash, true_id).join("replacement");
+    
+    // Search for the true_id location using BFS (to handle nested buffers)
+    let file_dir = buffer_path::file_dir(&file_hash);
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back(file_dir);
+    
+    let parent_dir = 'outer: loop {
+        if let Some(current_dir) = queue.pop_front() {
+            if let Ok(entries) = std::fs::read_dir(&current_dir) {
+                for entry in entries.flatten() {
+                    if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                        let child_dir = entry.path();
+                        let content_path = child_dir.join(true_id).join("content");
+                        
+                        if content_path.exists() {
+                            break 'outer child_dir;
+                        }
+                        
+                        queue.push_back(child_dir);
+                    }
+                }
+            }
+        } else {
+            // Not found, use flat path
+            break 'outer buffer_path::file_dir(&file_hash);
+        }
+    };
+    
+    // Build paths using the parent directory where true_id is located
+    let content_path = parent_dir.join(true_id).join("content");
+    let replacement_path = parent_dir.join(true_id).join("replacement");
 
     // Verify content file exists
     if !content_path.exists() {

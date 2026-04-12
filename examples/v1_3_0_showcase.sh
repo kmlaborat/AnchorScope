@@ -60,12 +60,20 @@ echo ""
 
 # Step 1: Level 1 - Anchor the outer function
 echo "=== Step 1: Level 1 - Anchor the calculate_area function ==="
-echo "Command: read --file $DEMO_FILE --anchor \"fn calculate_area(width: f64, height: f64) -> f64 {\""
+echo "Command: read --file $DEMO_FILE --anchor with multiline pattern capturing function body"
 echo ""
-$BIN read --file "$DEMO_FILE" --anchor "fn calculate_area(width: f64, height: f64) -> f64 {"
+$BIN read --file "$DEMO_FILE" --anchor 'fn calculate_area(width: f64, height: f64) -> f64 {
+    // Calculate the area of a rectangle
+    // Formula: width * height
+    width * height
+}'
 echo ""
 
-TRUE_ID_FUNC=$($BIN read --file "$DEMO_FILE" --anchor "fn calculate_area(width: f64, height: f64) -> f64 {" | grep "^true_id=" | head -1 | cut -d= -f2)
+TRUE_ID_FUNC=$($BIN read --file "$DEMO_FILE" --anchor 'fn calculate_area(width: f64, height: f64) -> f64 {
+    // Calculate the area of a rectangle
+    // Formula: width * height
+    width * height
+}' | grep "^true_id=" | head -1 | cut -d= -f2)
 echo "Function True ID: $TRUE_ID_FUNC"
 echo ""
 
@@ -86,19 +94,17 @@ echo ""
 # Step 4: Level 2 - Nested anchor using a unique pattern
 echo "=== Step 4: Level 2 - Nested anchor ==="
 echo "We anchor a pattern inside the calculate_area function."
-echo "Using label 'func_area' to reference the function buffer."
+echo "Using --true-id to reference the function buffer directly."
 echo ""
 
-# The buffer content for func_area contains only the first line of the function
-# So we need to anchor on a pattern that exists in that line
-# We'll use the function signature again to create a nested anchor
-
-# Read using the label to get the nested anchor
-$BIN read --file "$DEMO_FILE" --label "func_area" --anchor "fn calculate_area(width: f64, height: f64) -> f64 {"
+# Read from the function buffer using --true-id to get the nested anchor
+# This demonstrates that --true-id works for reading from nested buffers
+$BIN read --true-id "$TRUE_ID_FUNC" --anchor "// Formula: width * height"
 echo ""
 
-TRUE_ID_NESTED=$($BIN read --file "$DEMO_FILE" --label "func_area" --anchor "fn calculate_area(width: f64, height: f64) -> f64 {" | grep "^true_id=" | head -1 | cut -d= -f2)
-SCOPE_HASH_NESTED=$($BIN read --file "$DEMO_FILE" --label "func_area" --anchor "fn calculate_area(width: f64, height: f64) -> f64 {" | grep "^hash=" | head -1 | cut -d= -f2)
+# Get the nested true-id and scope_hash from the read output
+TRUE_ID_NESTED=$($BIN read --true-id "$TRUE_ID_FUNC" --anchor "// Formula: width * height" | grep "^true_id=" | head -1 | cut -d= -f2)
+SCOPE_HASH_NESTED=$($BIN read --true-id "$TRUE_ID_FUNC" --anchor "// Formula: width * height" | grep "^hash=" | head -1 | cut -d= -f2)
 echo "Nested True ID: $TRUE_ID_NESTED"
 echo "Scope Hash: $SCOPE_HASH_NESTED"
 echo ""
@@ -179,7 +185,7 @@ echo "fn demo() { x }" > "examples/demo_hash.rs"
 echo "Read the function..."
 HASH_OUTPUT=$($BIN read --file "examples/demo_hash.rs" --anchor "fn demo() {")
 echo "$HASH_OUTPUT"
-ORIGINAL_HASH=$(echo "$HASH_OUTPUT" | grep "^scope_hash=" | cut -d= -f2)
+ORIGINAL_HASH=$(echo "$HASH_OUTPUT" | grep "^hash=" | cut -d= -f2)
 echo "Original hash: $ORIGINAL_HASH"
 echo ""
 
