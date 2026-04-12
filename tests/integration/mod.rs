@@ -27,6 +27,8 @@ mod single_chain_buffer_structure;
 #[cfg(test)]
 mod storage_lifecycle_tests;
 #[cfg(test)]
+mod tree_command_tests;
+#[cfg(test)]
 mod utf8_validation_tests;
 #[cfg(test)]
 mod validation_order_tests;
