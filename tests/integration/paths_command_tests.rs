@@ -34,7 +34,7 @@ fn paths_with_true_id_returns_file_paths() {
     let replacement_line = lines.iter().find(|l| l.starts_with("replacement:")).expect("replacement line missing");
     
     let content_path = content_line.strip_prefix("content:").unwrap().trim();
-    let replacement_path = replacement_line.strip_prefix("replacement:").unwrap().trim();
+    let _replacement_path = replacement_line.strip_prefix("replacement:").unwrap().trim();
     
     // Verify paths exist (content path should exist)
     assert!(std::path::Path::new(content_path).exists());
