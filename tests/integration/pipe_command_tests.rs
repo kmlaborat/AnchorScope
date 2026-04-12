@@ -202,12 +202,6 @@ process.stdout.write(data);"#;
     ];
     
     let output = run_anchorscope(&args);
-    if !output.status.success() {
-        eprintln!("Command failed with status: {:?}", output.status);
-        eprintln!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-        eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
-        eprintln!("args: {:?}", args);
-    }
     assert!(output.status.success());
 }
 
@@ -254,11 +248,5 @@ fs.writeFileSync(process.argv[1], prefix + '_MODIFIED\n');"#;
     ];
     
     let output = run_anchorscope(&args);
-    if !output.status.success() {
-        eprintln!("Command failed with status: {:?}", output.status);
-        eprintln!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-        eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
-        eprintln!("args: {:?}", args);
-    }
     assert!(output.status.success());
 }
