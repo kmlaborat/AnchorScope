@@ -364,10 +364,30 @@ pub fn load_buffer_content(file_hash: &str, true_id: &str) -> Result<Vec<u8>, An
         return fs::read(&flat_path).map_err(|e| io_error_to_spec(e, "read failure"));
     }
 
-    // Try nested location
-    let nested_path = buffer_path::nested_true_id_dir(file_hash, "", true_id).join("content");
-    if nested_path.exists() {
-        return fs::read(&nested_path).map_err(|e| io_error_to_spec(e, "read failure"));
+    // Search all nested locations recursively using BFS
+    let file_dir = buffer_path::file_dir(file_hash);
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back(file_dir.clone());
+
+    while let Some(current_dir) = queue.pop_front() {
+        // Check all subdirectories for {true_id}/content
+        if let Ok(entries) = std::fs::read_dir(&current_dir) {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    let child_dir = entry.path();
+                    let content_path = child_dir.join(true_id).join("content");
+
+                    if content_path.exists() {
+                        return fs::read(&content_path).map_err(|e| {
+                            io_error_to_spec(e, "read failure")
+                        });
+                    }
+
+                    // Continue searching in nested directories
+                    queue.push_back(child_dir);
+                }
+            }
+        }
     }
 
     Err(AnchorScopeError::CannotLoadBufferContent)
