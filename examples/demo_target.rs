@@ -3,7 +3,7 @@
 
 fn calculate_area(width: f64, height: f64) -> f64 {
     // Calculate the area of a rectangle
-    modified content
+    // Formula: width * height
     width * height
 }
 

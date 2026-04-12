@@ -86,15 +86,21 @@ echo ""
 # Step 4: Level 2 - Nested anchor using a unique pattern
 echo "=== Step 4: Level 2 - Nested anchor ==="
 echo "We anchor a pattern inside the calculate_area function."
-echo "Using a unique string 'Formula: width' which only appears once."
+echo "Using label 'func_area' to reference the function buffer."
 echo ""
 
-# Use a pattern that's truly unique in the file
-$BIN read --file "$DEMO_FILE" --anchor "// Formula: width * height"
+# The buffer content for func_area contains only the first line of the function
+# So we need to anchor on a pattern that exists in that line
+# We'll use the function signature again to create a nested anchor
+
+# Read using the label to get the nested anchor
+$BIN read --file "$DEMO_FILE" --label "func_area" --anchor "fn calculate_area(width: f64, height: f64) -> f64 {"
 echo ""
 
-TRUE_ID_NESTED=$($BIN read --file "$DEMO_FILE" --anchor "// Formula: width * height" | grep "^true_id=" | head -1 | cut -d= -f2)
+TRUE_ID_NESTED=$($BIN read --file "$DEMO_FILE" --label "func_area" --anchor "fn calculate_area(width: f64, height: f64) -> f64 {" | grep "^true_id=" | head -1 | cut -d= -f2)
+SCOPE_HASH_NESTED=$($BIN read --file "$DEMO_FILE" --label "func_area" --anchor "fn calculate_area(width: f64, height: f64) -> f64 {" | grep "^hash=" | head -1 | cut -d= -f2)
 echo "Nested True ID: $TRUE_ID_NESTED"
+echo "Scope Hash: $SCOPE_HASH_NESTED"
 echo ""
 
 # Step 5: Create label for the nested anchor
@@ -107,9 +113,9 @@ echo ""
 # Step 6: Pipe command - stdout mode
 echo "=== Step 6: Pipe command - stdout mode ==="
 echo "Streaming buffer content to stdout for external tools."
-echo "Command: pipe --label area_formula --out"
+echo "Command: pipe --true-id $TRUE_ID_NESTED --out"
 echo ""
-$BIN pipe --label "area_formula" --out
+$BIN pipe --true-id "$TRUE_ID_NESTED" --out
 echo ""
 echo "→ Buffer content streamed successfully"
 echo ""
@@ -120,8 +126,8 @@ echo "Simulating external tool processing via: pipe --out | sed | pipe --in"
 echo ""
 
 # Get the content, modify it, and pipe it back
-PIPE_OUT=$($BIN pipe --label "area_formula" --out)
-echo "$PIPE_OUT" | sed 's/width \* height/(width * height) + 1/' | $BIN pipe --label "area_formula" --in-flag
+PIPE_OUT=$($BIN pipe --true-id "$TRUE_ID_NESTED" --out)
+echo "$PIPE_OUT" | sed 's/width \* height/(width * height) + 1/' | $BIN pipe --true-id "$TRUE_ID_NESTED" --in
 echo ""
 echo "→ Replacement content written via pipe --in"
 echo ""
@@ -150,9 +156,9 @@ echo ""
 
 # Step 10: Write from replacement
 echo "=== Step 10: Write from replacement to file ==="
-echo "Command: write --file $DEMO_FILE --label area_formula --replacement 'modified content'"
+echo "Command: write --true-id $TRUE_ID_NESTED --anchor '// Formula: width' --expected-hash $SCOPE_HASH_NESTED --from-replacement"
 echo ""
-$BIN write --file "$DEMO_FILE" --label "area_formula" --replacement "modified content"
+$BIN write --true-id "$TRUE_ID_NESTED" --anchor "// Formula: width" --expected-hash "$SCOPE_HASH_NESTED" --from-replacement
 echo ""
 
 # Step 11: Verify the change
@@ -173,7 +179,7 @@ echo "fn demo() { x }" > "examples/demo_hash.rs"
 echo "Read the function..."
 HASH_OUTPUT=$($BIN read --file "examples/demo_hash.rs" --anchor "fn demo() {")
 echo "$HASH_OUTPUT"
-ORIGINAL_HASH=$(echo "$HASH_OUTPUT" | grep "^hash=" | cut -d= -f2)
+ORIGINAL_HASH=$(echo "$HASH_OUTPUT" | grep "^scope_hash=" | cut -d= -f2)
 echo "Original hash: $ORIGINAL_HASH"
 echo ""
 
