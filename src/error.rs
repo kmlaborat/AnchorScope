@@ -109,7 +109,7 @@ impl AnchorScopeError {
             AnchorScopeError::PermissionDenied => "IO_ERROR: permission denied".to_string(),
             AnchorScopeError::InvalidUtf8 => "IO_ERROR: invalid UTF-8".to_string(),
             AnchorScopeError::ReadFailure => "IO_ERROR: read failure".to_string(),
-            AnchorScopeError::WriteFailure(e) => format!("IO_ERROR: write failure: {}", e.kind()),
+            AnchorScopeError::WriteFailure(e) => format!("IO_ERROR: write failure: {}", e),
             AnchorScopeError::BufferMetadataNotFound(_) => {
                 "IO_ERROR: buffer metadata for true_id not found".to_string()
             }

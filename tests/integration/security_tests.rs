@@ -250,3 +250,5 @@ fn atomic_write_propagates_io_error() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("WriteFailure"));
 }
+
+

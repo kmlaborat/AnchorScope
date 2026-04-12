@@ -23,7 +23,7 @@ fn atomic_write_file(path: &std::path::Path, content: &[u8]) -> Result<(), Ancho
         Err(e) => {
             return Err(AnchorScopeError::WriteFailure(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                format!("tempfile creation error: {}", e),
+                format!("tempfile creation error for '{}': {}", path.display(), e),
             )));
         }
     };
@@ -37,7 +37,7 @@ fn atomic_write_file(path: &std::path::Path, content: &[u8]) -> Result<(), Ancho
         Ok(_) => Ok(()),
         Err(e) => Err(AnchorScopeError::WriteFailure(std::io::Error::new(
             std::io::ErrorKind::Other,
-            format!("tempfile persist error: {}", e),
+            format!("tempfile persist error for '{}': {}", path.display(), e),
         ))),
     }
 }
