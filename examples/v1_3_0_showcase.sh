@@ -20,6 +20,38 @@ BIN="./target/release/anchorscope"
 echo "Target file: $DEMO_FILE"
 echo ""
 
+# Helper: create demo file
+create_demo_file() {
+    if [ ! -f "$DEMO_FILE" ]; then
+        cat > "$DEMO_FILE" << 'RUST_CODE'
+// Geometry calculator
+// This module provides functions for calculating area and perimeter
+
+fn calculate_area(width: f64, height: f64) -> f64 {
+    // Calculate the area of a rectangle
+    // Formula: width * height
+    width * height
+}
+
+fn calculate_perimeter(width: f64, height: f64) -> f64 {
+    // Calculate the perimeter of a rectangle
+    // Formula: 2 * (width + height)
+    2.0 * (width + height)
+}
+
+fn main() {
+    let w = 5.0;
+    let h = 3.0;
+    println!("Area: {}", calculate_area(w, h));
+    println!("Perimeter: {}", calculate_perimeter(w, h));
+}
+RUST_CODE
+    fi
+}
+
+# Create demo file
+create_demo_file
+
 # Show the demo file
 echo "=== Step 0: The Demo File ==="
 echo "--- File content ---"
