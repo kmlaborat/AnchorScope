@@ -47,11 +47,18 @@ fn hash_determinism() {
     let result1: std::collections::HashMap<String, String> = parse_output(&stdout1);
     let result2: std::collections::HashMap<String, String> = parse_output(&stdout2);
 
-    let hash1 = result1.get("hash").expect("hash should be present in first output");
-    let hash2 = result2.get("hash").expect("hash should be present in second output");
+    let hash1 = result1
+        .get("hash")
+        .expect("hash should be present in first output");
+    let hash2 = result2
+        .get("hash")
+        .expect("hash should be present in second output");
 
     // Verify hashes are identical
-    assert_eq!(hash1, hash2, "hashes should be identical for same anchor content");
+    assert_eq!(
+        hash1, hash2,
+        "hashes should be identical for same anchor content"
+    );
 }
 
 /// Test 2: Verify different anchor content produces different hashes
@@ -98,8 +105,12 @@ fn hash_differentiates_similar_content() {
     let result_a: std::collections::HashMap<String, String> = parse_output(&stdout_a);
     let result_b: std::collections::HashMap<String, String> = parse_output(&stdout_b);
 
-    let hash_a = result_a.get("hash").expect("hash should be present for anchor A");
-    let hash_b = result_b.get("hash").expect("hash should be present for anchor B");
+    let hash_a = result_a
+        .get("hash")
+        .expect("hash should be present for anchor A");
+    let hash_b = result_b
+        .get("hash")
+        .expect("hash should be present for anchor B");
 
     // Verify hashes are different
     assert_ne!(
@@ -138,9 +149,9 @@ fn hash_on_normalized_content() {
 
     let hash = result.get("hash").expect("hash should be present");
 
-    // Compute expected hash manually on the normalized matched region
+    // Compute expected hash manually on the normalized matched scope
     // The anchor "TARGET" appears on a line by itself. After normalization, the matched
-    // region should be just "TARGET" without the CRLF.
+    // scope should be just "TARGET" without the CRLF.
     // Note: The anchor itself is "TARGET" which has no newlines. The CRLF is part of the
     // line ending in the file, which is normalized away during matching.
     let expected_hash = format!("{:016x}", xxh3_64(b"TARGET"));

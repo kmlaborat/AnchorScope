@@ -28,13 +28,18 @@ pub fn run_anchorscope(args: &[&str]) -> std::process::Output {
         .arg("anchorscope")
         .output()
         .expect("failed to build anchorscope");
-    
+
     if !build_output.status.success() {
-        panic!("Build failed: {}", String::from_utf8_lossy(&build_output.stderr));
+        panic!(
+            "Build failed: {}",
+            String::from_utf8_lossy(&build_output.stderr)
+        );
     }
-    
+
     // Run the built binary directly
-    let binary_path = std::path::Path::new("target").join("debug").join("anchorscope");
+    let binary_path = std::path::Path::new("target")
+        .join("debug")
+        .join("anchorscope");
     let output = Command::new(&binary_path)
         .args(args)
         .output()

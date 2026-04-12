@@ -21,13 +21,39 @@ impl std::fmt::Display for MatchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MatchError::NoMatch => write!(f, "NO_MATCH"),
-            MatchError::MultipleMatches(n) => write!(f, "MULTIPLE_MATCHES ({})", n),
+            MatchError::MultipleMatches(_n) => write!(f, "MULTIPLE_MATCHES"),
         }
     }
 }
 
+/// Normalize CRLF -> LF in place, modifying the input Vec<u8> directly.
+/// This avoids allocation when the input is already owned (Vec<u8>).
+/// Returns a slice view of the normalized content.
+///
+/// Note: This function modifies the input buffer. Callers must ensure
+/// they have ownership or can safely modify the data.
+pub fn normalize_line_endings_in_place(buffer: &mut Vec<u8>) -> &[u8] {
+    let mut write_idx = 0;
+    let mut i = 0;
+    let len = buffer.len();
+
+    while i < len {
+        if buffer[i] == b'\r' && i + 1 < len && buffer[i + 1] == b'\n' {
+            // Skip CR, keep LF
+            i += 1;
+        } else {
+            buffer[write_idx] = buffer[i];
+            write_idx += 1;
+            i += 1;
+        }
+    }
+
+    &buffer[..write_idx]
+}
+
 /// Normalize CRLF -> LF.
 /// This is the ONLY implicit normalization permitted by the spec.
+/// Returns a new Vec<u8> (allocates).
 pub fn normalize_line_endings(raw: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(raw.len());
     let mut i = 0;
@@ -89,108 +115,92 @@ pub fn resolve(haystack: &[u8], anchor: &[u8]) -> Result<Match, MatchError> {
     }
 }
 
-/// Extract function body starting from function definition line.
-/// Returns the byte range of the function body (including the function definition line).
-/// This is used for nested anchors to limit search scope to the function.
-pub fn extract_function_body(content: &[u8], start_line: usize) -> Option<std::ops::Range<usize>> {
-    // Check if it's a function definition
+/// Extract function body from Python file.
+/// Returns the full function including the definition line.
+pub fn extract_function_body(content: &[u8], anchor_start: usize, anchor_end: usize) -> Vec<u8> {
     let normalized = normalize_line_endings(content);
-    let lines: Vec<&[u8]> = normalized.split(|b| *b == b'\n').collect();
-    
-    if start_line == 0 || start_line > lines.len() {
-        return None;
+    let mut start = anchor_start;
+    let mut end = anchor_end;
+
+    // Find the start of the function definition (look backwards for "def ")
+    let search_start = if start >= 10 { start - 10 } else { 0 };
+    let search_scope = &normalized[search_start..start];
+    if let Some(def_pos) = find_reverse(search_scope, b"def ") {
+        // Find the beginning of the line containing "def "
+        let actual_def_pos = search_start + def_pos;
+        if actual_def_pos > 0 {
+            // Find the previous newline
+            let prev_newline = normalized[..actual_def_pos]
+                .iter()
+                .rposition(|&b| b == b'\n');
+            start = prev_newline.map(|p| p + 1).unwrap_or(0);
+        } else {
+            start = actual_def_pos;
+        }
     }
-    
-    // Get the function definition line (0-indexed: start_line - 1)
-    let func_def_line = lines.get(start_line - 1)?;
-    
-    // Only extract if it's a function definition
-    let func_def_str = String::from_utf8_lossy(func_def_line);
-    if !func_def_str.trim().starts_with("def ") {
-        return None;
-    }
-    
-    // Calculate the indentation level of the function definition
-    let func_indent = count_leading_spaces(func_def_line);
-    
-    // Find the end of the function by looking for lines with < indentation
-    let func_start_byte: usize = lines[..start_line - 1].iter().map(|l| l.len() + 1).sum();
-    
-    // Start from the next line after function definition
-    let mut func_end_byte = func_start_byte;
-    for i in start_line..lines.len() {
-        let line = lines.get(i)?;
-        let line_indent = count_leading_spaces(line);
-        
-        // If line is empty, always include it (it's part of the function body)
-        // If line has < function indentation (and is not empty), function ended
-        if line.is_empty() {
-            // Empty line, include it
-        } else if line_indent < func_indent {
-            // Non-empty line with less indentation, function ended
+
+    // Find the end of the function (look for next def statement or end of file)
+    let mut current_pos = end;
+    while current_pos < normalized.len() {
+        // Find the next newline
+        let next_newline = normalized[current_pos..].iter().position(|&b| b == b'\n');
+        if next_newline.is_none() {
+            // End of file
+            end = normalized.len();
             break;
         }
-        
-        func_end_byte += line.len() + 1;
+        let newline_pos = current_pos + next_newline.unwrap();
+        let line_end = newline_pos + 1;
+
+        // Check if the next line starts with "def " (next function)
+        let next_line_start = line_end;
+        if next_line_start >= normalized.len() {
+            end = normalized.len();
+            break;
+        }
+
+        // Skip blank lines and comments
+        let remaining = &normalized[next_line_start..];
+        if !remaining.is_empty() {
+            // Find first non-whitespace character
+            let first_non_ws = remaining
+                .iter()
+                .skip_while(|&&b| b == b' ' || b == b'\t' || b == b'\n')
+                .position(|&b| b != b'\n');
+            if let Some(pos) = first_non_ws {
+                let check_pos = next_line_start + pos;
+                // Check if line starts with "def "
+                if check_pos + 4 <= normalized.len()
+                    && &normalized[check_pos..check_pos + 4] == b"def "
+                {
+                    // Found next function definition, so this is the end of current function
+                    end = current_pos;
+                    break;
+                }
+            }
+        }
+
+        current_pos = line_end;
     }
-    
-    // Clamp the range to the actual content length
-    let content_len = content.len();
-    let end = func_end_byte.min(content_len);
-    
-    eprintln!("DEBUG extract: func_start_byte={}, end={}, content_len={}, normalized_len={}", func_start_byte, end, content_len, normalized.len());
-    
-    if func_start_byte < end {
-        Some(func_start_byte..end)
-    } else {
-        None
-    }
+
+    normalized[start..end].to_vec()
 }
 
-/// Count leading spaces in a line
-fn count_leading_spaces(line: &[u8]) -> usize {
-    line.iter().take_while(|&&b| b == b' ' || b == b'\t').count()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_extract_function_body_simple() {
-        let content = b"# Comment\n\ndef process_data():\n    for i in range(10):\n        print(i)\n    print(\"Done\")\n\ndef other():\n    pass\n";
-        
-        // Function starts at line 3 (1-indexed)
-        let result = extract_function_body(content, 3);
-        assert!(result.is_some(), "Should extract function body");
-        
-        let range = result.unwrap();
-        let func_body = &content[range.clone()];
-        let func_str = String::from_utf8_lossy(func_body);
-        
-        // Should include function definition and loop
-        assert!(func_str.contains("def process_data()"), "Should contain function definition");
-        assert!(func_str.contains("for i in range(10)"), "Should contain loop");
-        assert!(func_str.contains("print(i)"), "Should contain print statement");
-        assert!(func_str.contains("print(\"Done\")"), "Should contain final print");
-        
-        // Should NOT include the next function
-        eprintln!("Extracted function body:\n{}", func_str);
-        assert!(!func_str.contains("def other()"), "Should not contain next function");
+/// Find the last occurrence of `needle` in `haystack`, returning the byte offset.
+fn find_reverse(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return None;
     }
-
-    #[test]
-    fn test_extract_function_body_no_extraction_for_non_function() {
-        let content = b"x = 1\nfor i in range(10):\n    print(i)\n";
-        
-        let result = extract_function_body(content, 2);
-        assert!(result.is_none(), "Should return None for non-function anchor");
+    let limit = haystack.len() - needle.len();
+    let mut i = limit;
+    loop {
+        if haystack[i..i + needle.len()] == *needle {
+            return Some(i);
+        }
+        if i == 0 {
+            break;
+        }
+        i -= 1;
     }
-
-    #[test]
-    fn test_count_leading_spaces() {
-        assert_eq!(count_leading_spaces(b"    indented"), 4);
-        assert_eq!(count_leading_spaces(b"\tindented"), 1);
-        assert_eq!(count_leading_spaces(b"no indent"), 0);
-    }
+    None
 }

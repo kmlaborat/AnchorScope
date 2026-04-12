@@ -14,7 +14,7 @@ fn normalization_crlf_file_lf_anchor() {
 
     let anchor = "TARGET"; // LF normalized internally
 
-    // First, use read command to obtain the hash of the anchor region
+    // First, use read command to obtain the hash of the anchor scope
     let output = run_anchorscope(&[
         "read",
         "--file",
@@ -55,7 +55,7 @@ fn normalization_crlf_file_lf_anchor() {
     );
 
     // Read the file content and verify:
-    // - The anchor region is replaced with "NEW"
+    // - The anchor scope is replaced with "NEW"
     // - File content is normalized to LF line endings (no CR bytes)
     let final_bytes = fs::read(&file_path).expect("failed to read final file");
     assert!(
@@ -110,7 +110,7 @@ fn normalization_replacement_with_crlf() {
 
     let anchor = "TARGET";
 
-    // First, use read command to obtain the hash of the anchor region
+    // First, use read command to obtain the hash of the anchor scope
     let output = run_anchorscope(&[
         "read",
         "--file",
@@ -151,7 +151,7 @@ fn normalization_replacement_with_crlf() {
     );
 
     // Read the file content and verify:
-    // - The anchor region is replaced
+    // - The anchor scope is replaced
     // - File content is normalized to LF line endings (no CR bytes)
     let final_bytes = fs::read(&file_path).expect("failed to read final file");
     assert!(

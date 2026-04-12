@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- `pipe` command for external tool integration via stdout/stdin or file I/O
+- `paths` command for buffer file path resolution
+- `replacement` file in Anchor Buffer for pipeline workflows
+
+### Changed
+- Version updated to v1.3.0
+
 ## [1.2.0] - 2026-04-09
 
 ### Added

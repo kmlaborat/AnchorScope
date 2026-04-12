@@ -1,10 +1,14 @@
 mod buffer_path;
 mod cli;
 mod commands;
+mod config;
+mod error;
 mod hash;
 mod matcher;
+mod security;
 mod storage;
 
+use crate::error::AnchorScopeError;
 use clap::Parser;
 use cli::{Cli, Command};
 use matcher::normalize_line_endings;
@@ -12,18 +16,11 @@ use std::fs;
 use std::process;
 
 pub fn map_io_error_read(e: std::io::Error) -> String {
-    match e.kind() {
-        std::io::ErrorKind::NotFound => "IO_ERROR: file not found".to_string(),
-        std::io::ErrorKind::PermissionDenied => "IO_ERROR: permission denied".to_string(),
-        _ => "IO_ERROR: read failure".to_string(),
-    }
+    AnchorScopeError::from(e).to_spec_string()
 }
 
 pub fn map_io_error_write(e: std::io::Error) -> String {
-    match e.kind() {
-        std::io::ErrorKind::PermissionDenied => "IO_ERROR: permission denied".to_string(),
-        _ => "IO_ERROR: write failure".to_string(),
-    }
+    crate::error::from_io_error_write(e).to_spec_string()
 }
 
 pub fn validate_utf8(bytes: &[u8]) -> Result<(), String> {
@@ -43,7 +40,12 @@ fn main() {
             anchor,
             anchor_file,
             label,
-        } => commands::read::execute(&file, anchor.as_deref(), anchor_file.as_deref(), label.as_deref()),
+        } => commands::read::execute(
+            &file,
+            anchor.as_deref(),
+            anchor_file.as_deref(),
+            label.as_deref(),
+        ),
         Command::Write {
             file,
             anchor,
@@ -51,6 +53,7 @@ fn main() {
             expected_hash,
             label,
             replacement,
+            from_replacement,
         } => commands::write::execute(
             &file,
             anchor.as_deref(),
@@ -58,12 +61,28 @@ fn main() {
             expected_hash.as_deref(),
             label.as_deref(),
             &replacement,
+            from_replacement,
         ),
-        Command::Label {
-            name,
-            true_id,
-        } => commands::label::execute(&name, &true_id),
+        Command::Label { name, true_id } => commands::label::execute(&name, &true_id),
         Command::Tree { file } => commands::tree::execute(&file),
+        Command::Pipe {
+            label,
+            true_id,
+            out,
+            in_flag,
+            file_io,
+            tool,
+            tool_args,
+        } => commands::pipe::execute(
+            &label,
+            true_id.as_deref(),
+            out,
+            in_flag,
+            file_io,
+            tool.as_deref(),
+            tool_args.as_deref(),
+        ),
+        Command::Paths { label, true_id } => commands::paths::execute(&label, true_id.as_deref()),
     };
 
     process::exit(exit_code);
@@ -73,7 +92,9 @@ fn main() {
 /// Returns normalized anchor bytes (Vec<u8>) or error string.
 pub fn load_anchor(anchor: Option<&str>, anchor_file: Option<&str>) -> Result<Vec<u8>, String> {
     match (anchor, anchor_file) {
-        (None, None) => return Err("ERROR: either --anchor or --anchor-file must be provided".to_string()),
+        (None, None) => {
+            return Err("ERROR: either --anchor or --anchor-file must be provided".to_string())
+        }
         (Some(_), Some(_)) => return Err("IO_ERROR: mutually exclusive options".to_string()),
         _ => {}
     }
@@ -131,11 +152,15 @@ mod tests {
         let e = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
         assert_eq!(map_io_error_write(e), "IO_ERROR: permission denied");
 
-        // Test other errors (NotFound, Interrupted, etc.)
+        // Test NotFound (maps to WriteFailure for write operations)
         let e = std::io::Error::from(std::io::ErrorKind::NotFound);
         assert_eq!(map_io_error_write(e), "IO_ERROR: write failure");
 
+        // Test other errors (Interrupted, Other, etc.)
         let e = std::io::Error::from(std::io::ErrorKind::Interrupted);
+        assert_eq!(map_io_error_write(e), "IO_ERROR: write failure");
+
+        let e = std::io::Error::from(std::io::ErrorKind::Other);
         assert_eq!(map_io_error_write(e), "IO_ERROR: write failure");
     }
 

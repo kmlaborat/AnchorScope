@@ -169,6 +169,9 @@ fn binary_content_in_file() {
     // Let's compute expected line numbers:
     let expected_start_line = "1";
     let expected_end_line = "1";
-    assert_eq!(result.get("start_line"), Some(&expected_start_line.to_string()));
+    assert_eq!(
+        result.get("start_line"),
+        Some(&expected_start_line.to_string())
+    );
     assert_eq!(result.get("end_line"), Some(&expected_end_line.to_string()));
 }
