@@ -1,5 +1,4 @@
-use crate::test_helpers::{create_temp_file, parse_output, run_anchorscope};
-use std::collections::HashMap;
+use crate::test_helpers::{create_temp_file, run_anchorscope};
 
 #[test]
 fn write_no_replacement_returns_error() {
@@ -30,8 +29,8 @@ fn write_no_replacement_returns_error() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("NO_REPLACEMENT"),
-        "error should be NO_REPLACEMENT: {}",
+        stderr.contains("IO_ERROR: no replacement provided"),
+        "error should be IO_ERROR: no replacement provided: {}",
         stderr
     );
 }
@@ -60,8 +59,8 @@ fn write_no_replacement_without_anchor_returns_error() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("NO_REPLACEMENT"),
-        "error should be NO_REPLACEMENT: {}",
+        stderr.contains("IO_ERROR: no replacement provided"),
+        "error should be IO_ERROR: no replacement provided: {}",
         stderr
     );
 }

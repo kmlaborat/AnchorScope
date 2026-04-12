@@ -69,3 +69,5 @@ fn write_invalid_utf8_should_fail() {
     assert!(stderr.contains("IO_ERROR"));
     assert!(stderr.contains("invalid UTF-8"));
 }
+
+

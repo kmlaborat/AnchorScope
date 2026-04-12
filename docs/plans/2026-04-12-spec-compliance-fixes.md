@@ -1,415 +1,248 @@
-# SPEC Compliance Fixes Implementation Plan
+# Spec Compliance Fixes - UTF-8 Validation & Error Message Alignment
 
 > **REQUIRED SUB-SKILL:** Use the executing-plans skill to implement this plan task-by-task.
 
-**Goal:** Fix SPEC compliance gaps identified in code review: (1) Register missing write_from_replacement_tests, (2) Clean up unused code causing build warnings, (3) Add NO_REPLACEMENT integration test
+**Goal:** Fix two specification gaps: (1) add UTF-8 validation for buffer content loaded in label-mode, and (2) align custom error messages with SPEC §4.5 naming conventions.
 
-**Architecture:** 
-- Register the existing write_from_replacement_tests module in tests/integration/mod.rs
-- Add #[allow(dead_code)] or document unused functions in config.rs and matcher.rs
-- Add integration test for NO_REPLACEMENT error case
+**Architecture:** Two minimal, independent fixes:
+1. In `src/commands/read.rs`, after loading buffer content for label-mode, validate UTF-8 before use.
+2. In `src/commands/write.rs`, rename `AMBIGUOUS_REPLACEMENT` and `NO_REPLACEMENT` to match SPEC §4.5 format.
 
-**Tech Stack:** Rust 1.74, `thiserror`, `clap`, `serial_test`
-
----
-
-### Task 1: Register missing write_from_replacement_tests
-
-**Files:**
-- Modify: `tests/integration/mod.rs`
-
-**Step 1: Add the missing module declaration**
-
-```rust
-// Current mod.rs ends at line 20 with write_success_tests
-// Add after write_success_tests (before closing bracket):
-
-#[cfg(test)]
-mod write_from_replacement_tests;
-```
-
-**Step 2: Run tests to verify they are now discovered**
-
-Run: `cargo test write_from_replacement -- --list`
-Expected: 3 tests found:
-- `integration::write_from_replacement_tests::test_write_from_replacement_uses_buffer_content`
-- `integration::write_from_replacement_tests::test_write_from_replacement_fails_without_label`
-- `integration::write_from_replacement_tests::test_write_replacement_conflict_returns_ambiguous_replacement`
-
-**Step 3: Run the new tests**
-
-Run: `cargo test write_from_replacement -- --nocapture`
-Expected: 3 tests pass
-
-**Step 4: Verify all tests still pass**
-
-Run: `cargo test`
-Expected: 84 tests pass (81 existing + 3 new)
-
-**Step 5: Commit**
-
-```bash
-git add tests/integration/mod.rs
-git commit -m "feat: register write_from_replacement_tests module"
-```
+**Tech Stack:** Rust, AnchorScope v1.3.0 spec, existing test infrastructure.
 
 ---
 
-### Task 2: Clean up unused code warnings in config.rs
+## Task 1: Add UTF-8 validation for buffer content in label-mode
 
 **Files:**
-- Modify: `src/config.rs`
-
-**Step 1: Verify warnings exist**
-
-Run: `cargo build 2>&1 | grep "unused function" | grep "config"`
-Expected: Shows warnings for `max_file_size` and `max_nesting_depth`
-
-**Step 2: Add #[allow(dead_code)] to unused security functions**
-
-In `src/config.rs`, the security module already has `#[allow(dead_code)]` on both functions. Verify it's present:
-
-```rust
-// Line ~23-45 should have:
-pub mod security {
-    use std::env;
-
-    /// Maximum file size (default 100MB)
-    /// Note: Currently unused but kept for future security configuration
-    #[allow(dead_code)]  // ADD if missing
-    pub fn max_file_size() -> u64 {
-        // ... existing implementation ...
-    }
-
-    /// Maximum nesting depth (default 100)
-    /// Note: Currently unused but kept for future security configuration
-    #[allow(dead_code)]  // ADD if missing
-    pub fn max_nesting_depth() -> usize {
-        // ... existing implementation ...
-    }
-    // ... rest of file ...
-}
-```
-
-**Step 3: Run build to verify warnings are gone**
-
-Run: `cargo build 2>&1 | grep "unused function" | grep "config"`
-Expected: No output (no warnings)
-
-**Step 4: Run clippy to verify**
-
-Run: `cargo clippy --package anchorscope --message-format short 2>&1 | grep config`
-Expected: No dead_code warnings
-
-**Step 5: Commit**
-
-```bash
-git add src/config.rs
-git commit -m "chore: add #[allow(dead_code)] to security config functions"
-```
-
----
-
-### Task 3: Clean up unused code warnings in matcher.rs
-
-**Files:**
-- Modify: `src/matcher.rs`
-
-**Step 1: Verify warnings exist**
-
-Run: `cargo build 2>&1 | grep "unused function" | grep matcher`
-Expected: Shows warning for `normalize_line_endings_in_place`
-
-**Step 2: Add #[allow(dead_code)] to unused function**
-
-```rust
-// Line ~35 in matcher.rs:
-// Before:
-pub fn normalize_line_endings_in_place(buffer: &mut Vec<u8>) -> &[u8] {
-
-// After:
-/// Normalize CRLF -> LF in place (used by some tests)
-#[allow(dead_code)]
-pub fn normalize_line_endings_in_place(buffer: &mut Vec<u8>) -> &[u8] {
-```
-
-**Step 3: Run build to verify warnings are gone**
-
-Run: `cargo build 2>&1 | grep "unused function" | grep matcher`
-Expected: No output (no warnings)
-
-**Step 4: Run clippy to verify**
-
-Run: `cargo clippy --package anchorscope --message-format short 2>&1 | grep matcher`
-Expected: No dead_code warnings
-
-**Step 5: Commit**
-
-```bash
-git add src/matcher.rs
-git commit -m "chore: add #[allow(dead_code)] to normalize_line_endings_in_place"
-```
-
----
-
-### Task 4: Clean up unused code warnings in storage.rs
-
-**Files:**
-- Modify: `src/storage.rs`
-
-**Step 1: Verify warnings exist**
-
-Run: `cargo build 2>&1 | grep "unused function" | grep storage`
-Expected: Shows warnings for `find_buffer_content`, `file_hash_for_true_id_opt`, `true_id_exists`
-
-**Step 2: Add #[allow(dead_code)] to unused public functions**
-
-```rust
-// Line ~199 in storage.rs:
-// Before:
-pub fn find_buffer_content(file_hash: &str, true_id: &str) -> Result<Vec<u8>, AnchorScopeError> {
-
-// After:
-/// Find buffer content for a true_id by searching all directory levels.
-/// Public for external use; currently unused in codebase.
-#[allow(dead_code)]
-pub fn find_buffer_content(file_hash: &str, true_id: &str) -> Result<Vec<u8>, AnchorScopeError> {
-```
-
-```rust
-// Line ~238 in storage.rs:
-// Before:
-pub fn file_hash_for_true_id_opt(true_id: &str) -> Result<Option<String>, AmbiguousAnchorError> {
-
-// After:
-/// Find file_hash containing a given true_id, returning None if not found.
-/// Public for external use; currently unused in codebase.
-#[allow(dead_code)]
-pub fn file_hash_for_true_id_opt(true_id: &str) -> Result<Option<String>, AmbiguousAnchorError> {
-```
-
-```rust
-// Line ~619 in storage.rs:
-// Before:
-pub fn true_id_exists(file_hash: &str, true_id: &str) -> bool {
-
-// After:
-/// Check if a true_id exists in the buffer (flat or nested locations).
-/// Public for external use; currently unused in codebase.
-#[allow(dead_code)]
-pub fn true_id_exists(file_hash: &str, true_id: &str) -> bool {
-```
-
-**Step 3: Run build to verify warnings are gone**
-
-Run: `cargo build 2>&1 | grep "unused function" | grep storage`
-Expected: No output (no warnings)
-
-**Step 4: Run clippy to verify**
-
-Run: `cargo clippy --package anchorscope --message-format short 2>&1 | grep storage`
-Expected: No dead_code warnings
-
-**Step 5: Commit**
-
-```bash
-git add src/storage.rs
-git commit -m "chore: add #[allow(dead_code)] to unused storage functions"
-```
-
----
-
-### Task 5: Add NO_REPLACEMENT integration test
-
-**Files:**
-- Create: `tests/integration/error_no_replacement_tests.rs`
+- Modify: `src/commands/read.rs:110-115` (add validation after loading buffer_content)
+- Test: `tests/unit/true_id_computation.rs` (add test for invalid UTF-8 in label mode)
 
 **Step 1: Write the failing test**
 
+Add a test case that creates a buffer with invalid UTF-8 bytes and attempts to read it in label-mode.
+
 ```rust
-#[cfg(test)]
-mod error_no_replacement_tests {
-    use serial_test::serial;
-    use crate::storage;
+#[test]
+fn read_label_mode_rejects_invalid_utf8_buffer() {
     use crate::hash;
+    use crate::storage;
 
-    #[test]
-    #[serial]
-    fn write_no_replacement_returns_error() {
-        // Setup: Create a test file
-        let content = b"test content";
-        let file_hash = hash::compute(content);
-        let source_path = std::env::temp_dir().join("test_no_replacement.txt");
+    // Create a buffer with invalid UTF-8
+    let raw_content = b"valid content";
+    let file_hash = hash::compute(raw_content);
+    let true_id = "invalid_utf8_test";
 
-        // Save file content
-        std::fs::write(&source_path, content).unwrap();
-        storage::save_file_content(&file_hash, content).unwrap();
-        storage::save_source_path(&file_hash, source_path.to_str().unwrap()).unwrap();
+    // Save valid file content
+    storage::save_file_content(&file_hash, raw_content).unwrap();
+    storage::save_source_path(&file_hash, "/tmp/test.txt").unwrap();
 
-        // Try to write without --replacement and without --from-replacement
-        // This should fail with NO_REPLACEMENT error
-        let exit_code = crate::commands::write::execute(
-            source_path.to_str().unwrap(),
-            Some("test"),
-            None,
-            Some(&hash::compute(content)),
-            None,
-            "",  // empty replacement
-            false,  // from_replacement = false
-        );
+    // Save a buffer with INVALID UTF-8 bytes
+    let invalid_buffer = vec![0xFF, 0xFE, 0x00, 0x01];
+    storage::save_buffer_content(&file_hash, true_id, &invalid_buffer).unwrap();
 
-        assert_eq!(exit_code, 1, "write should fail without replacement");
-        
-        // Cleanup
-        storage::invalidate_true_id_hierarchy(&file_hash, &file_hash).unwrap();
-        let _ = std::fs::remove_file(&source_path);
-    }
+    let buffer_meta = storage::BufferMeta {
+        true_id: true_id.to_string(),
+        parent_true_id: None,
+        scope_hash: hash::compute(&invalid_buffer),
+        anchor: "test".to_string(),
+    };
+    storage::save_buffer_metadata(&file_hash, true_id, &buffer_meta).unwrap();
 
-    #[test]
-    #[serial]
-    fn write_no_replacement_without_anchor_returns_error() {
-        // Setup: Create a test file
-        let content = b"test content";
-        let file_hash = hash::compute(content);
-        let source_path = std::env::temp_dir().join("test_no_replacement2.txt");
+    // Save a valid label pointing to the invalid buffer
+    storage::save_label_mapping("bad_utf8_label", true_id).unwrap();
 
-        // Save file content
-        std::fs::write(&source_path, content).unwrap();
-        storage::save_file_content(&file_hash, content).unwrap();
-        storage::save_source_path(&file_hash, source_path.to_str().unwrap()).unwrap();
+    // Execute read with label pointing to invalid UTF-8 buffer
+    let exit_code = crate::commands::read::execute("/tmp/test.txt", None, None, Some("bad_utf8_label"));
 
-        // Try to write without anchor (which implies no --replacement)
-        // This should fail with NO_REPLACEMENT error
-        let exit_code = crate::commands::write::execute(
-            source_path.to_str().unwrap(),
-            None,  // no anchor
-            None,
-            Some(&hash::compute(content)),
-            None,
-            "",  // empty replacement
-            false,  // from_replacement = false
-        );
+    // Cleanup
+    storage::invalidate_label("bad_utf8_label");
+    storage::invalidate_true_id_hierarchy(&file_hash, true_id).unwrap();
 
-        assert_eq!(exit_code, 1, "write should fail without anchor and replacement");
-        
-        // Cleanup
-        storage::invalidate_true_id_hierarchy(&file_hash, &file_hash).unwrap();
-        let _ = std::fs::remove_file(&source_path);
-    }
-
-    #[test]
-    #[serial]
-    fn write_with_from_replacement_without_label_returns_error() {
-        // Setup: Create a test file
-        let content = b"test content";
-        let file_hash = hash::compute(content);
-        let source_path = std::env::temp_dir().join("test_from_replacement_no_label.txt");
-
-        // Save file content
-        std::fs::write(&source_path, content).unwrap();
-        storage::save_file_content(&file_hash, content).unwrap();
-        storage::save_source_path(&file_hash, source_path.to_str().unwrap()).unwrap();
-
-        // Try to use --from-replacement without --label (should fail)
-        let exit_code = crate::commands::write::execute(
-            source_path.to_str().unwrap(),
-            Some("test"),
-            None,
-            Some(&hash::compute(content)),
-            None,  // no label
-            "",  // replacement ignored
-            true,  // from_replacement = true
-        );
-
-        assert_eq!(exit_code, 1, "write should fail with from_replacement but no label");
-        
-        // Cleanup
-        storage::invalidate_true_id_hierarchy(&file_hash, &file_hash).unwrap();
-        let _ = std::fs::remove_file(&source_path);
-    }
+    // Should fail with IO_ERROR: invalid UTF-8
+    assert_eq!(exit_code, 1);
 }
 ```
 
-**Step 2: Register the test module**
+**Step 2: Run test to verify it fails**
+
+Run: `cargo test --test unit read_label_mode_rejects_invalid_utf8_buffer -v`
+Expected: `test read_label_mode_rejects_invalid_utf8_buffer ... FAILED` (because validation is missing)
+
+**Step 3: Implement UTF-8 validation in read.rs**
+
+Add validation right after loading buffer content for label-mode:
 
 ```rust
-// In tests/integration/mod.rs, add after error_nomatch_tests:
+// After line ~110 (after loading buffer_content for label mode)
+let buffer_content = match storage::load_buffer_content(&file_hash, &true_id) {
+    Ok(c) => c,
+    Err(_) => {
+        // Try nested location - find the parent that contains this true_id
+        let content = match find_nested_buffer_content(&file_hash, &true_id) {
+            Some(c) => c,
+            None => {
+                eprintln!("IO_ERROR: cannot load buffer content");
+                return 1;
+            }
+        };
+        content
+    }
+};
 
-#[cfg(test)]
-mod error_no_replacement_tests;
-```
-
-**Step 3: Run tests to verify they fail initially**
-
-Run: `cargo test write_no_replacement -- --nocapture`
-Expected: Tests fail because the error handling may not output the expected message
-
-**Step 4: Implement error handling (if needed)**
-
-The error handling is already in `src/commands/write.rs`:
-```rust
-// Line ~48-50 in write.rs:
-if !from_replacement && replacement.is_empty() {
-    eprintln!("NO_REPLACEMENT");
+// Validate UTF-8 for buffer content per SPEC §2.2
+if std::str::from_utf8(&buffer_content).is_err() {
+    eprintln!("IO_ERROR: invalid UTF-8");
     return 1;
 }
 ```
 
-Verify this is working by checking the output.
+**Step 4: Run test to verify it passes**
 
-**Step 5: Run tests again to verify they pass**
+Run: `cargo test --test unit read_label_mode_rejects_invalid_utf8_buffer -v`
+Expected: `test read_label_mode_rejects_invalid_utf8_buffer ... ok`
 
-Run: `cargo test write_no_replacement -- --nocapture`
-Expected: 3 tests pass
+**Step 5: Run all tests to ensure no regressions**
 
-**Step 6: Run all tests to verify no regressions**
+Run: `cargo test --test unit -v`
+Expected: All unit tests pass
 
-Run: `cargo test`
-Expected: 87 tests pass (84 existing + 3 new)
+Run: `cargo test --test integration -v`
+Expected: All integration tests pass
 
-**Step 7: Commit**
+**Step 6: Commit**
 
 ```bash
-git add tests/integration/error_no_replacement_tests.rs tests/integration/mod.rs
-git commit -m "test: add NO_REPLACEMENT error integration tests"
+git add src/commands/read.rs tests/unit/true_id_computation.rs
+git commit -m "fix: validate UTF-8 for buffer content in label-mode (SPEC §2.2)"
 ```
 
 ---
 
-### Task 6: Final verification
+## Task 2: Align error messages with SPEC §4.5 naming conventions
 
 **Files:**
-- No code changes needed
+- Modify: `src/commands/write.rs:55-57` (rename error messages)
+- Test: `tests/integration/error_no_replacement_tests.rs` (update test expectations)
 
-**Step 1: Run clippy**
+**Step 1: Update error message names**
 
-Run: `cargo clippy --package anchorscope --message-format short`
-Expected: No warnings
+Replace `AMBIGUOUS_REPLACEMENT` and `NO_REPLACEMENT` with SPEC-compliant names:
 
-**Step 2: Run all tests**
+```rust
+// Line ~55-57
+// OLD:
+if from_replacement && !replacement.is_empty() {
+    eprintln!("AMBIGUOUS_REPLACEMENT");
+    return 1;
+}
+if !from_replacement && replacement.is_empty() {
+    eprintln!("NO_REPLACEMENT");
+    return 1;
+}
 
-Run: `cargo test`
-Expected: 87 tests pass
+// NEW:
+if from_replacement && !replacement.is_empty() {
+    eprintln!("IO_ERROR: ambiguous replacement source");
+    return 1;
+}
+if !from_replacement && replacement.is_empty() {
+    eprintln!("IO_ERROR: no replacement provided");
+    return 1;
+}
+```
 
-**Step 3: Build with verbose warnings**
+**Step 2: Update tests to expect new error messages**
 
-Run: `cargo build --all-targets 2>&1 | grep -E "warning:" | grep -v "unused variable: _"`
-Expected: No warnings (or only expected unused variable warnings with underscore prefix)
+In `tests/integration/error_no_replacement_tests.rs`:
 
-**Step 4: Format code**
+```rust
+// Find where NO_REPLACEMENT is checked and update
+assert!(output.contains("IO_ERROR: no replacement provided"));
+```
 
-Run: `cargo fmt`
-Expected: No changes needed
+In `tests/integration/error_multiple_matches_tests.rs` (if AMBIGUOUS_REPLACEMENT is tested):
 
-**Step 5: Final commit**
+```rust
+assert!(output.contains("IO_ERROR: ambiguous replacement source"));
+```
+
+**Step 3: Run tests to verify error message changes**
+
+Run: `cargo test --test integration error_no_replacement -v`
+Expected: Tests pass with new error message format
+
+Run: `cargo test --test integration error_ambiguous -v`
+Expected: Tests pass (if ambiguous test exists)
+
+**Step 4: Run all integration tests**
+
+Run: `cargo test --test integration -v`
+Expected: All integration tests pass
+
+**Step 5: Commit**
 
 ```bash
-git add .
-git commit -m "chore: run cargo clippy and cargo fmt for code quality"
+git add src/commands/write.rs tests/integration/error_no_replacement_tests.rs
+git commit -m "fix: align error messages with SPEC §4.5 naming conventions"
 ```
 
 ---
 
-## All tasks complete
+## Task 3: Verify spec compliance after fixes
 
-Run `cargo test` to verify all 87 tests pass before merging.
+**Files:**
+- Review: `docs/SPEC.md` sections 2.2, 4.5
+- Review: `src/commands/read.rs` and `src/commands/write.rs`
+
+**Step 1: Manual spec review**
+
+Review SPEC §2.2: "All inputs MUST be valid UTF-8"
+- ✅ File content validation exists
+- ✅ Anchor file content validation exists
+- ✅ Inline replacement validation exists
+- ✅ **Buffer content validation added** (Task 1)
+- ✅ Replacement buffer content validation exists (pipe.rs)
+
+Review SPEC §4.5: "Error message format"
+- ✅ `IO_ERROR: invalid UTF-8`
+- ✅ `IO_ERROR: ambiguous replacement source`
+- ✅ `IO_ERROR: no replacement provided`
+- ✅ `NO_MATCH`
+- ✅ `MULTIPLE_MATCHES`
+- ✅ `HASH_MISMATCH`
+- ✅ `DUPLICATE_TRUE_ID`
+
+**Step 2: Final test run**
+
+Run: `cargo test -v`
+Expected: All tests pass
+
+**Step 3: Commit final review**
+
+```bash
+git add docs/SPEC.md
+git commit -m "docs: verify spec compliance after UTF-8 validation fix"
+```
+
+---
+
+## Summary of Changes
+
+| Issue | Status | Impact |
+|-------|--------|--------|
+| Missing UTF-8 validation for buffer content | **FIXED** | Prevents invalid UTF-8 from propagating through label-mode operations |
+| Non-spec-compliant error messages | **FIXED** | Aligns with SPEC §4.5 format requirements |
+| Test coverage | **ADDED** | New unit test for invalid UTF-8 buffer content |
+
+**Verification:** After both fixes, AnchorScope will be fully compliant with SPEC §2.2 and §4.5.
+
+---
+
+Plan complete and saved to `docs/plans/2026-04-12-spec-compliance-fixes.md`. Two execution options:
+
+**1. Subagent-Driven (this session)** - I dispatch fresh subagent per task, review between tasks, fast iteration
+
+**2. Parallel Session (separate)** - Open new session with executing-plans, batch execution with checkpoints
+
+**Which approach?**

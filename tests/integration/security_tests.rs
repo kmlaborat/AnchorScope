@@ -1,4 +1,4 @@
-use crate::test_helpers::{create_temp_file, run_anchorscope};
+use crate::test_helpers::run_anchorscope;
 
 #[test]
 fn path_traversal_blocked() {
@@ -88,7 +88,7 @@ fn read_fails_when_path_contains_symlink() {
     let dir = tempfile::tempdir().unwrap();
     let real = dir.path().join("real.txt");
     std::fs::write(&real, "data").unwrap();
-    let link = dir.path().join("link.txt");
+    let _link = dir.path().join("link.txt");
 
     #[cfg(unix)]
     {
@@ -102,8 +102,8 @@ fn read_fails_when_path_contains_symlink() {
     }
 
     // Verify the symlink was created
-    if !link.exists()
-        || !std::fs::symlink_metadata(&link)
+    if !_link.exists()
+        || !std::fs::symlink_metadata(&_link)
             .unwrap()
             .file_type()
             .is_symlink()
@@ -112,7 +112,7 @@ fn read_fails_when_path_contains_symlink() {
     }
 
     // run the command with the symlink path
-    let output = run_anchorscope(&["read", "--file", link.to_str().unwrap(), "--anchor", "test"]);
+    let output = run_anchorscope(&["read", "--file", _link.to_str().unwrap(), "--anchor", "test"]);
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("PermissionDenied"));
@@ -123,7 +123,7 @@ fn write_fails_when_target_is_symlink() {
     let dir = tempfile::tempdir().unwrap();
     let real = dir.path().join("real.txt");
     std::fs::write(&real, "orig").unwrap();
-    let link = dir.path().join("link.txt");
+    let _link = dir.path().join("link.txt");
 
     #[cfg(unix)]
     {
@@ -136,8 +136,8 @@ fn write_fails_when_target_is_symlink() {
     }
 
     // Verify the symlink was created
-    if !link.exists()
-        || !std::fs::symlink_metadata(&link)
+    if !_link.exists()
+        || !std::fs::symlink_metadata(&_link)
             .unwrap()
             .file_type()
             .is_symlink()
@@ -148,7 +148,7 @@ fn write_fails_when_target_is_symlink() {
     let out = run_anchorscope(&[
         "write",
         "--file",
-        link.to_str().unwrap(),
+        _link.to_str().unwrap(),
         "--anchor",
         "test",
         "--expected-hash",

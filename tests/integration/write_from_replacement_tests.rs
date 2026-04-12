@@ -1,5 +1,4 @@
 use crate::test_helpers::{create_temp_file, run_anchorscope};
-use std::fs;
 
 /// Parse key=value output into HashMap
 fn parse_output(output: &str) -> std::collections::HashMap<String, String> {
@@ -39,7 +38,7 @@ fn test_write_from_replacement_uses_buffer_content() {
         .get("true_id")
         .expect("true_id should be present")
         .clone();
-    let file_hash = result
+    let _file_hash = result
         .get("label")
         .expect("label should be present")
         .clone();
@@ -62,12 +61,12 @@ fn test_write_from_replacement_uses_buffer_content() {
     );
 
     // Modify the content (simple transformation: add return statement)
-    let original_content = String::from_utf8(pipe_out.stdout).expect("invalid UTF-8");
-    let modified_content = "def foo():\n    return 42\n";
+    let _original_content = String::from_utf8(pipe_out.stdout).expect("invalid UTF-8");
+    let _modified_content = "def foo():\n    return 42\n";
 
     // Pipe modified content back via stdin
     use std::process::Command;
-    let pipe_in = Command::new("cargo")
+    let _pipe_in = Command::new("cargo")
         .args(&["run", "--", "pipe", "--true-id", &true_id, "--in"])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .stdin(std::process::Stdio::piped())

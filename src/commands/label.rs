@@ -1,3 +1,4 @@
+use crate::error::AnchorScopeError;
 use crate::storage;
 
 /// Label: assign a human-readable name (alias) to a True ID.
@@ -99,36 +100,15 @@ pub fn execute(name: &str, true_id: &str) -> i32 {
         return 1;
     }
 
-    // Check if label file already exists
-    match storage::load_label_target(name) {
-        Ok(existing_true_id) => {
-            if existing_true_id != true_id {
-                eprintln!("LABEL_EXISTS");
-                return 1;
-            }
-            // Same true_id, allow (idempotent)
-        }
-        Err(ref msg) if msg.starts_with("IO_ERROR: file not found") => {
-            // Label doesn't exist, proceed to create
-        }
-        Err(ref msg) if msg.starts_with("IO_ERROR:") => {
-            eprintln!("{}", msg);
-            return 1;
-        }
-        Err(ref msg) => {
-            eprintln!("IO_ERROR: {}", msg);
-            return 1;
-        }
-    }
-
     // Save the label mapping
+    // storage::save_label_mapping handles LABEL_EXISTS error per SPEC §6.4
     match storage::save_label_mapping(name, true_id) {
         Ok(()) => {
             println!("OK: alias '{}' defined for true_id '{}'", name, true_id);
             0
         }
-        Err(ref msg) if msg.starts_with("LABEL_EXISTS:") => {
-            eprintln!("{}", msg);
+        Err(AnchorScopeError::LabelExists) => {
+            eprintln!("LABEL_EXISTS");
             return 1;
         }
         Err(ref msg) if msg.starts_with("IO_ERROR:") => {

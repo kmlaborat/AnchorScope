@@ -94,6 +94,13 @@ pub fn execute(
             }
         };
 
+        // Validate UTF-8 for buffer content per SPEC §2.2
+        // All inputs MUST be valid UTF-8, including buffer content loaded in label mode
+        if std::str::from_utf8(&buffer_content).is_err() {
+            eprintln!("IO_ERROR: invalid UTF-8");
+            return 1;
+        }
+
         // Normalize the anchor
         let anchor_bytes = if let Some(ref anchor_file_path) = anchor_file {
             // Validate anchor file path

@@ -115,6 +115,9 @@ mod tests {
         let file_hash = hash::compute(content);
         let true_id = "test_true_id_456";
 
+        // Clean up label first (for test isolation)
+        storage::invalidate_label("my_function");
+        
         storage::save_label_mapping("my_function", &true_id).unwrap();
         storage::save_file_content(&file_hash, content).unwrap();
         storage::save_buffer_content(&file_hash, &true_id, content).unwrap();

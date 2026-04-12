@@ -54,12 +54,12 @@ pub fn execute(
 ) -> i32 {
     // Validate replacement source - cannot use both options
     if from_replacement && !replacement.is_empty() {
-        eprintln!("AMBIGUOUS_REPLACEMENT");
+        eprintln!("IO_ERROR: ambiguous replacement source");
         return 1;
     }
     // If neither source is provided, report missing replacement
     if !from_replacement && replacement.is_empty() {
-        eprintln!("NO_REPLACEMENT");
+        eprintln!("IO_ERROR: no replacement provided");
         return 1;
     }
 

@@ -18,10 +18,10 @@ pub enum AnchorScopeError {
     #[error("LABEL_EXISTS")]
     LabelExists,
 
-    #[error("AMBIGUOUS_REPLACEMENT")]
+    #[error("IO_ERROR: ambiguous replacement source")]
     AmbiguousReplacement,
 
-    #[error("NO_REPLACEMENT")]
+    #[error("IO_ERROR: no replacement provided")]
     NoReplacement,
 
     #[error("IO_ERROR: file not found")]
@@ -103,8 +103,8 @@ impl AnchorScopeError {
             AnchorScopeError::HashMismatch => "HASH_MISMATCH".to_string(),
             AnchorScopeError::DuplicateTrueId => "DUPLICATE_TRUE_ID".to_string(),
             AnchorScopeError::LabelExists => "LABEL_EXISTS".to_string(),
-            AnchorScopeError::AmbiguousReplacement => "AMBIGUOUS_REPLACEMENT".to_string(),
-            AnchorScopeError::NoReplacement => "NO_REPLACEMENT".to_string(),
+            AnchorScopeError::AmbiguousReplacement => "IO_ERROR: ambiguous replacement source".to_string(),
+            AnchorScopeError::NoReplacement => "IO_ERROR: no replacement provided".to_string(),
             AnchorScopeError::FileNotFound => "IO_ERROR: file not found".to_string(),
             AnchorScopeError::PermissionDenied => "IO_ERROR: permission denied".to_string(),
             AnchorScopeError::InvalidUtf8 => "IO_ERROR: invalid UTF-8".to_string(),

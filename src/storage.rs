@@ -68,8 +68,22 @@ pub fn save_label_mapping(name: &str, true_id: &str) -> Result<(), AnchorScopeEr
     ensure_dir(&dir)?;
     let path = dir.join(format!("{}.json", name));
 
-    // Allow overwriting labels
-    // No collision check needed
+    // Check if label already exists per SPEC §6.4
+    let label_exists = path.exists();
+
+    if label_exists {
+        // Load existing label and compare true_id
+        let existing_content = fs::read_to_string(&path)
+            .map_err(|e| io_error_to_spec(e, "read failure"))?;
+        let existing_meta: LabelMeta = serde_json::from_str(&existing_content)
+            .map_err(|_| AnchorScopeError::LabelMappingCorrupted("label".to_string()))?;
+
+        // If true_id is different, return LABEL_EXISTS error
+        if existing_meta.true_id != true_id {
+            return Err(AnchorScopeError::LabelExists);
+        }
+        // Same true_id, allow idempotent overwrite
+    }
 
     let meta = LabelMeta {
         true_id: true_id.to_string(),
@@ -156,7 +170,7 @@ pub fn find_true_id_dir(
     let mut found_paths: Vec<PathBuf> = Vec::new();
     let file_dir = buffer_path::file_dir(file_hash);
 
-    // BFS search to find all locations of this true_id
+    // BFS search to find ALL locations of this true_id
     let mut queue = VecDeque::new();
     queue.push_back(file_dir.clone());
 
@@ -167,7 +181,8 @@ pub fn find_true_id_dir(
         if target_dir.join("content").exists() || target_dir.join("metadata.json").exists() {
             found_paths.push(target_dir.clone());
 
-            // If we found more than one, it's ambiguous
+            // SPEC §3.2: If the same True ID is found at multiple locations within the 
+            // same {file_hash} directory, the system MUST terminate immediately with DUPLICATE_TRUE_ID
             if found_paths.len() > 1 {
                 return Err(AmbiguousAnchorError {
                     true_id: true_id.to_string(),
@@ -600,14 +615,39 @@ pub fn invalidate_label(name: &str) {
 
 /// Check if a true_id has duplicates within a specific file_hash directory.
 /// Returns Err("DUPLICATE_TRUE_ID") if found, Ok(()) otherwise.
+/// SPEC §3.2: Duplicate True IDs within the same file_hash directory must be detected.
 pub fn check_duplicate_true_id_in_file_hash(
     file_hash: &str,
     true_id: &str,
 ) -> Result<(), AnchorScopeError> {
-    match find_true_id_dir(file_hash, true_id) {
-        Ok(_) => Ok(()),                                  // Single location - OK
-        Err(_) => Err(AnchorScopeError::DuplicateTrueId), // Multiple locations - error
+    let file_dir = buffer_path::file_dir(file_hash);
+    let mut count = 0;
+
+    // Check flat location: {file_hash}/{true_id}/
+    let flat_dir = buffer_path::true_id_dir(file_hash, true_id);
+    if flat_dir.join("content").exists() || flat_dir.join("metadata.json").exists() {
+        count += 1;
+        if count > 1 {
+            return Err(AnchorScopeError::DuplicateTrueId);
+        }
     }
+
+    // Check nested locations: search all subdirectories for {true_id}/content or {true_id}/metadata.json
+    if let Ok(entries) = std::fs::read_dir(&file_dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                let nested_dir = entry.path().join(true_id);
+                if nested_dir.join("content").exists() || nested_dir.join("metadata.json").exists() {
+                    count += 1;
+                    if count > 1 {
+                        return Err(AnchorScopeError::DuplicateTrueId);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Load replacement content from {file_hash}/{true_id}/replacement.

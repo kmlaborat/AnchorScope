@@ -83,6 +83,9 @@ fn true_id_fails_when_parent_metadata_missing() {
     // Save scope content but NOT metadata (to simulate corruption)
     storage::save_scope_content(&file_hash, &outer_true_id, outer_scope).unwrap();
     
+    // Clean up label first (for test isolation)
+    storage::invalidate_label("test_label_missing_meta");
+    
     // Save label mapping pointing to outer_true_id
     storage::save_label_mapping("test_label_missing_meta", &outer_true_id).unwrap();
     
