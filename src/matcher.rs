@@ -32,6 +32,9 @@ impl std::fmt::Display for MatchError {
 ///
 /// Note: This function modifies the input buffer. Callers must ensure
 /// they have ownership or can safely modify the data.
+///
+/// Currently unused but kept for potential future use or testing.
+#[allow(dead_code)]
 pub fn normalize_line_endings_in_place(buffer: &mut Vec<u8>) -> &[u8] {
     let mut write_idx = 0;
     let mut i = 0;

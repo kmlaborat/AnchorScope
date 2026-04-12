@@ -27,6 +27,8 @@ pub mod security {
     use std::env;
 
     /// Maximum file size (default 100MB)
+    /// Note: Currently unused but kept for future security configuration
+    #[allow(dead_code)]
     pub fn max_file_size() -> u64 {
         if let Ok(val) = env::var("ANCHORSCOPE_MAX_FILE_SIZE") {
             if let Ok(size) = val.parse::<u64>() {
@@ -37,6 +39,8 @@ pub mod security {
     }
 
     /// Maximum nesting depth (default 100)
+    /// Note: Currently unused but kept for future security configuration
+    #[allow(dead_code)]
     pub fn max_nesting_depth() -> usize {
         if let Ok(val) = env::var("ANCHORSCOPE_MAX_NESTING_DEPTH") {
             if let Ok(depth) = val.parse::<usize>() {

@@ -11,6 +11,8 @@ mod error_io_tests;
 #[cfg(test)]
 mod error_multiple_matches_tests;
 #[cfg(test)]
+mod error_no_replacement_tests;
+#[cfg(test)]
 mod error_nomatch_tests;
 #[cfg(test)]
 mod forbidden_operations_tests;
@@ -30,5 +32,7 @@ mod utf8_validation_tests;
 mod validation_order_tests;
 #[cfg(test)]
 mod verification_hash_tests;
+#[cfg(test)]
+mod write_from_replacement_tests;
 #[cfg(test)]
 mod write_success_tests;

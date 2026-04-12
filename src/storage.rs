@@ -196,6 +196,9 @@ pub fn find_true_id_dir(
 /// Find buffer content for a true_id by searching all directory levels.
 /// Returns content if found, Err(AnchorScopeError::CannotLoadBufferContent) if not found.
 /// This function eliminates duplicate traversal logic that was in commands/read.rs.
+///
+/// Currently unused but kept for potential future use.
+#[allow(dead_code)]
 pub fn find_buffer_content(file_hash: &str, true_id: &str) -> Result<Vec<u8>, AnchorScopeError> {
     // Check flat location first
     let flat_path = buffer_path::true_id_dir(file_hash, true_id).join("content");
@@ -235,6 +238,9 @@ pub fn find_buffer_content(file_hash: &str, true_id: &str) -> Result<Vec<u8>, An
 /// Returns Ok(Some(file_hash)) if found, Ok(None) if not found.
 /// Returns Err(AmbiguousAnchorError) if true_id exists in multiple locations.
 /// This function eliminates duplicate code that was in commands/read.rs and commands/label.rs.
+///
+/// Currently unused but kept for potential future use.
+#[allow(dead_code)]
 pub fn file_hash_for_true_id_opt(true_id: &str) -> Result<Option<String>, AmbiguousAnchorError> {
     find_file_hash_for_true_id_with_dup_check(true_id)
 }
@@ -325,10 +331,10 @@ pub fn file_hash_for_true_id(true_id: &str) -> Result<String, AnchorScopeError> 
         Ok(Some(hash)) => Ok(hash),
         Ok(None) => Err(AnchorScopeError::BufferNotFound),
         Err(AmbiguousAnchorError {
-            true_id: tid,
+            true_id: _tid,
             locations,
         }) => {
-            let locations_str: Vec<String> =
+            let _locations_str: Vec<String> =
                 locations.iter().map(|p| p.display().to_string()).collect();
             Err(AnchorScopeError::BufferNotFound)
         }
@@ -376,10 +382,10 @@ pub fn load_buffer_metadata(
         }
         Ok(None) => Err(AnchorScopeError::FileNotFound),
         Err(AmbiguousAnchorError {
-            true_id: tid,
+            true_id: _tid,
             locations,
         }) => {
-            let locations_str: Vec<String> =
+            let _locations_str: Vec<String> =
                 locations.iter().map(|p| p.display().to_string()).collect();
             Err(AnchorScopeError::DuplicateTrueId)
         }
@@ -428,7 +434,7 @@ pub fn load_anchor_metadata_by_true_id(true_id: &str) -> Result<AnchorMeta, Anch
 
     // Check for duplicates (ambiguous anchor)
     if found_locations.len() > 1 {
-        let locations_str: Vec<String> = found_locations
+        let _locations_str: Vec<String> = found_locations
             .iter()
             .map(|p| p.display().to_string())
             .collect();
@@ -616,6 +622,9 @@ pub fn load_replacement_content(
 /// Check if a true_id exists in the buffer (flat or nested locations).
 /// Returns true if found, false otherwise.
 /// This function eliminates duplicate code that was in commands/read.rs.
+///
+/// Currently unused but kept for potential future use.
+#[allow(dead_code)]
 pub fn true_id_exists(file_hash: &str, true_id: &str) -> bool {
     // Check flat location
     let flat_path = buffer_path::true_id_dir(file_hash, true_id).join("content");
