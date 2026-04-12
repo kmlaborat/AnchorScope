@@ -39,4 +39,6 @@ mod write_from_replacement_tests;
 #[cfg(test)]
 mod write_success_tests;
 #[cfg(test)]
+mod paths_command_tests;
+#[cfg(test)]
 mod pipe_command_tests;
