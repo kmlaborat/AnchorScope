@@ -159,3 +159,106 @@ fn pipe_stdin_mode_replacement_with_label() {
     let stdout = String::from_utf8(pipe_out.stdout).unwrap();
     assert!(stdout.contains("x"));
 }
+
+#[test]
+fn pipe_file_io_passes_content_path_to_tool() {
+    // Setup: Create buffer
+    let content = "fn main() { x }\n";
+    let (_temp_dir, file_path) = create_temp_file(content);
+    
+    let read_output = run_anchorscope(&[
+        "read",
+        "--file",
+        file_path.to_str().unwrap(),
+        "--anchor",
+        "fn main() {",
+    ]);
+    assert!(read_output.status.success());
+    let read_stdout = String::from_utf8(read_output.stdout).unwrap();
+    let result = parse_output(&read_stdout);
+    let true_id = result.get("true_id").unwrap().clone();
+    
+    // Create a simple tool that reads content and writes to provided output path
+    // Use node which is in the allowed tools whitelist
+    // Write a node script file and run it
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let script_path = temp_dir.path().join("tool.js");
+    let script_content = r#"const fs = require('fs');
+const data = fs.readFileSync(0, 'utf8');
+process.stdout.write(data);"#;
+    std::fs::write(&script_path, script_content).unwrap();
+    let script_path_str = script_path.to_string_lossy();
+    
+    // Build args for anchorscope pipe
+    let args = vec![
+        "pipe",
+        "--true-id",
+        &true_id,
+        "--tool",
+        "node",
+        "--tool-args",
+        &script_path_str,
+        "--file-io",
+    ];
+    
+    let output = run_anchorscope(&args);
+    if !output.status.success() {
+        eprintln!("Command failed with status: {:?}", output.status);
+        eprintln!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+        eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+        eprintln!("args: {:?}", args);
+    }
+    assert!(output.status.success());
+}
+
+#[test]
+fn pipe_file_io_with_tool_args_succeeds() {
+    // Setup: Create buffer
+    let content = "fn main() { x }\n";
+    let (_temp_dir, file_path) = create_temp_file(content);
+    
+    let read_output = run_anchorscope(&[
+        "read",
+        "--file",
+        file_path.to_str().unwrap(),
+        "--anchor",
+        "fn main() {",
+    ]);
+    assert!(read_output.status.success());
+    let read_stdout = String::from_utf8(read_output.stdout).unwrap();
+    let result = parse_output(&read_stdout);
+    let true_id = result.get("true_id").unwrap().clone();
+    
+    // Create a tool that accepts arguments
+    // Write a node script file and run it with prefix argument
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let script_path = temp_dir.path().join("tool.js");
+    let script_content = r#"const fs = require('fs');
+const prefix = process.argv[2];
+fs.writeFileSync(process.argv[1], prefix + '_MODIFIED\n');"#;
+    std::fs::write(&script_path, script_content).unwrap();
+    let script_path_str = script_path.to_string_lossy();
+    
+    // Build args for anchorscope pipe
+    // Note: --tool-args is a single space-separated string
+    let tool_args = format!("{} PREFIX", script_path_str);
+    let args = vec![
+        "pipe",
+        "--true-id",
+        &true_id,
+        "--tool",
+        "node",
+        "--tool-args",
+        &tool_args,
+        "--file-io",
+    ];
+    
+    let output = run_anchorscope(&args);
+    if !output.status.success() {
+        eprintln!("Command failed with status: {:?}", output.status);
+        eprintln!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+        eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+        eprintln!("args: {:?}", args);
+    }
+    assert!(output.status.success());
+}
