@@ -14,6 +14,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 - Version updated to v1.3.0
 
+## [1.3.1] - 2026-04-12
+
+### Changed
+- **CLI flag rename**: `pipe` command `--in-flag` renamed to `--in` (`--in-flag` retained as alias)
+  - Aligns with specification and improves usability
+  - Usage: `anchorscope pipe --true-id <id> --in`
+
+### Documentation
+- **README.md**: Added missing CLI option documentation
+  - `read --true-id` and `read --label` for nested buffer reads (level 2+)
+  - `write --label` for writing via human-readable labels
+  - `pipe --label` for pipe operations with labels
+  - `pipe --tool-args` for passing arguments to external tools in file-io mode
+
+### Fixed
+- **Showcase script** (`examples/v1_3_0_showcase.sh`):
+  - Ensures clean demo file initialization on each run
+  - Corrects anchor strings in write operations to match actual content
+  - Improves error detection in test steps (HASH_MISMATCH, MULTIPLE_MATCHES, etc.)
+
 ## [1.2.0] - 2026-04-09
 
 ### Added
