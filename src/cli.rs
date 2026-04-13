@@ -110,11 +110,11 @@ pub enum Command {
         out: bool,
 
         /// Read from stdin and write to replacement (default mode).
-        #[arg(long, conflicts_with_all = ["file_io", "tool", "out"], alias = "in")]
-        in_flag: bool,
+        #[arg(long, conflicts_with_all = ["file_io", "tool", "out"], alias = "in-flag")]
+        r#in: bool,
 
         /// File I/O mode: pass content path to external tool.
-        #[arg(long, conflicts_with_all = ["out", "in_flag"], requires = "tool")]
+        #[arg(long, conflicts_with_all = ["out", "in"], requires = "tool")]
         file_io: bool,
 
         /// External tool command to execute in file-io mode.

@@ -131,7 +131,7 @@ fn validate_and_store_replacement(
 }
 
 /// Entry point for pipe command - stdout mode (default).
-fn execute_stdout(label: &Option<String>, true_id: Option<&str>, out: bool, in_flag: bool) -> i32 {
+fn execute_stdout(label: &Option<String>, true_id: Option<&str>, out: bool, r#in: bool) -> i32 {
     let true_id_str = match (label, true_id) {
         (Some(l), None) => match storage::load_label_target(l) {
             Ok(tid) => tid,
@@ -159,7 +159,7 @@ fn execute_stdout(label: &Option<String>, true_id: Option<&str>, out: bool, in_f
                 1
             }
         }
-    } else if in_flag {
+    } else if r#in {
         // Read from stdin
         let mut stdin = io::stdin();
         let mut buffer = Vec::new();
@@ -316,7 +316,7 @@ pub fn execute(
     label: &Option<String>,
     true_id: Option<&str>,
     out: bool,
-    in_flag: bool,
+    r#in: bool,
     file_io: bool,
     tool: Option<&str>,
     tool_args: Option<&str>,
@@ -329,7 +329,7 @@ pub fn execute(
             1
         }
     } else {
-        execute_stdout(label, true_id, out, in_flag)
+        execute_stdout(label, true_id, out, r#in)
     }
 }
 

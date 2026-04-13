@@ -147,6 +147,8 @@ c4f8a1b2d3e4f5a6  (/path/to/file.rs)
 
 ```bash
 anchorscope pipe --true-id {true_id} --out | external-tool | anchorscope pipe --true-id {true_id} --in
+# or using label
+anchorscope pipe --label {alias} --out | external-tool | anchorscope pipe --label {alias} --in
 ```
 
 * `--out`: streams `buffer/{true_id}/content` to stdout
@@ -156,11 +158,17 @@ anchorscope pipe --true-id {true_id} --out | external-tool | anchorscope pipe --
 
 ```bash
 anchorscope pipe --true-id {true_id} --tool external-tool --file-io
+# or with tool arguments
+anchorscope pipe --true-id {true_id} \
+  --tool <external-tool> \
+  --file-io \
+  --tool-args "<arg1> <arg2>"
 ```
 
 * Passes `buffer/{true_id}/content` path to external tool
 * External tool reads `content` and writes output to a path provided by `pipe`
 * `pipe` validates and normalizes output, then stores it as `replacement`
+* `--tool-args` passes space-separated arguments to the external tool
 
 ### Paths: Buffer File Paths
 

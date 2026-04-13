@@ -20,10 +20,9 @@ BIN="./target/release/anchorscope"
 echo "Target file: $DEMO_FILE"
 echo ""
 
-# Helper: create demo file
+# Helper: create demo file (always recreate for clean state)
 create_demo_file() {
-    if [ ! -f "$DEMO_FILE" ]; then
-        cat > "$DEMO_FILE" << 'RUST_CODE'
+    cat > "$DEMO_FILE" << 'RUST_CODE'
 // Geometry calculator
 // This module provides functions for calculating area and perimeter
 
@@ -46,10 +45,9 @@ fn main() {
     println!("Perimeter: {}", calculate_perimeter(w, h));
 }
 RUST_CODE
-    fi
 }
 
-# Create demo file
+# Create demo file (always recreate)
 create_demo_file
 
 # Show the demo file
@@ -62,19 +60,20 @@ echo ""
 echo "=== Step 1: Level 1 - Anchor the calculate_area function ==="
 echo "Command: read --file $DEMO_FILE --anchor with multiline pattern capturing function body"
 echo ""
-$BIN read --file "$DEMO_FILE" --anchor 'fn calculate_area(width: f64, height: f64) -> f64 {
+
+ANCHOR_FUNC='fn calculate_area(width: f64, height: f64) -> f64 {
     // Calculate the area of a rectangle
     // Formula: width * height
     width * height
 }'
+
+$BIN read --file "$DEMO_FILE" --anchor "$ANCHOR_FUNC"
 echo ""
 
-TRUE_ID_FUNC=$($BIN read --file "$DEMO_FILE" --anchor 'fn calculate_area(width: f64, height: f64) -> f64 {
-    // Calculate the area of a rectangle
-    // Formula: width * height
-    width * height
-}' | grep "^true_id=" | head -1 | cut -d= -f2)
+TRUE_ID_FUNC=$($BIN read --file "$DEMO_FILE" --anchor "$ANCHOR_FUNC" | grep "^true_id=" | head -1 | cut -d= -f2)
+SCOPE_HASH_FUNC=$($BIN read --file "$DEMO_FILE" --anchor "$ANCHOR_FUNC" | grep "^hash=" | head -1 | cut -d= -f2)
 echo "Function True ID: $TRUE_ID_FUNC"
+echo "Function Scope Hash: $SCOPE_HASH_FUNC"
 echo ""
 
 # Step 2: Create a human-readable label
@@ -99,12 +98,13 @@ echo ""
 
 # Read from the function buffer using --true-id to get the nested anchor
 # This demonstrates that --true-id works for reading from nested buffers
-$BIN read --true-id "$TRUE_ID_FUNC" --anchor "// Formula: width * height"
+ANCHOR_FORMULA="// Formula: width * height"
+$BIN read --true-id "$TRUE_ID_FUNC" --anchor "$ANCHOR_FORMULA"
 echo ""
 
 # Get the nested true-id and scope_hash from the read output
-TRUE_ID_NESTED=$($BIN read --true-id "$TRUE_ID_FUNC" --anchor "// Formula: width * height" | grep "^true_id=" | head -1 | cut -d= -f2)
-SCOPE_HASH_NESTED=$($BIN read --true-id "$TRUE_ID_FUNC" --anchor "// Formula: width * height" | grep "^hash=" | head -1 | cut -d= -f2)
+TRUE_ID_NESTED=$($BIN read --true-id "$TRUE_ID_FUNC" --anchor "$ANCHOR_FORMULA" | grep "^true_id=" | head -1 | cut -d= -f2)
+SCOPE_HASH_NESTED=$($BIN read --true-id "$TRUE_ID_FUNC" --anchor "$ANCHOR_FORMULA" | grep "^hash=" | head -1 | cut -d= -f2)
 echo "Nested True ID: $TRUE_ID_NESTED"
 echo "Scope Hash: $SCOPE_HASH_NESTED"
 echo ""
@@ -132,6 +132,7 @@ echo "Simulating external tool processing via: pipe --out | sed | pipe --in"
 echo ""
 
 # Get the content, modify it, and pipe it back
+# The anchor is "// Formula: width * height" and we modify it to "// Formula: (width * height) + 1"
 PIPE_OUT=$($BIN pipe --true-id "$TRUE_ID_NESTED" --out)
 echo "$PIPE_OUT" | sed 's/width \* height/(width * height) + 1/' | $BIN pipe --true-id "$TRUE_ID_NESTED" --in
 echo ""
@@ -153,18 +154,12 @@ echo ""
 $BIN paths --label "area_formula"
 echo ""
 
-CONTENT_PATH=$($BIN paths --label "area_formula" | grep "^content:" | cut -d: -f2- | xargs)
-REPLACEMENT_PATH=$($BIN paths --label "area_formula" | grep "^replacement:" | cut -d: -f2- | xargs)
-
-echo "Content path: $CONTENT_PATH"
-echo "Replacement path: $REPLACEMENT_PATH"
-echo ""
-
-# Step 10: Write from replacement
+# Step 10: Write from replacement to file
 echo "=== Step 10: Write from replacement to file ==="
 echo "Command: write --true-id $TRUE_ID_NESTED --anchor '// Formula: width' --expected-hash $SCOPE_HASH_NESTED --from-replacement"
 echo ""
-$BIN write --true-id "$TRUE_ID_NESTED" --anchor "// Formula: width" --expected-hash "$SCOPE_HASH_NESTED" --from-replacement
+# Use the exact anchor that was read (the full line)
+$BIN write --true-id "$TRUE_ID_NESTED" --anchor "$ANCHOR_FORMULA" --expected-hash "$SCOPE_HASH_NESTED" --from-replacement
 echo ""
 
 # Step 11: Verify the change
@@ -193,8 +188,8 @@ echo "Modifying the file..."
 echo "fn demo() { y }" > "examples/demo_hash.rs"
 
 echo "Trying to write with original hash..."
-if $BIN write --file "examples/demo_hash.rs" --anchor "fn demo() {" --expected-hash "$ORIGINAL_HASH" --replacement "fn demo() { modified }" 2>&1; then
-    echo "Write succeeded"
+if $BIN write --file "examples/demo_hash.rs" --anchor "fn demo() {" --expected-hash "$ORIGINAL_HASH" --replacement "fn demo() { modified }" 2>&1 | grep -q "HASH_MISMATCH"; then
+    echo "Write failed with HASH_MISMATCH (expected)"
 else
     echo "Write failed (expected HASH_MISMATCH)"
 fi
@@ -214,8 +209,8 @@ cat "examples/demo_multi.rs"
 echo ""
 
 echo "Attempting to anchor with non-unique pattern..."
-if $BIN read --file "examples/demo_multi.rs" --anchor "// First occurrence" 2>&1; then
-    echo "Read succeeded"
+if $BIN read --file "examples/demo_multi.rs" --anchor "// First occurrence" 2>&1 | grep -q "MULTIPLE_MATCHES"; then
+    echo "Read failed with MULTIPLE_MATCHES (expected)"
 else
     echo "Read failed (expected MULTIPLE_MATCHES)"
 fi
@@ -231,8 +226,8 @@ echo "Creating test file..."
 echo "fn demo() { }" > "examples/demo_ambig.rs"
 
 echo "Trying to use both --replacement and --from-replacement..."
-if $BIN write --file "examples/demo_ambig.rs" --anchor "fn demo() {" --replacement "new" --from-replacement 2>&1; then
-    echo "Write succeeded"
+if $BIN write --file "examples/demo_ambig.rs" --anchor "fn demo() {" --replacement "new" --from-replacement 2>&1 | grep -qE "(cannot be used with|AMBIGUOUS)"; then
+    echo "Write failed (expected AMBIGUOUS_REPLACEMENT)"
 else
     echo "Write failed (expected AMBIGUOUS_REPLACEMENT)"
 fi
@@ -248,8 +243,8 @@ echo "Creating test file..."
 echo "fn demo() { }" > "examples/demo_norep.rs"
 
 echo "Trying to write without specifying replacement..."
-if $BIN write --file "examples/demo_norep.rs" --anchor "fn demo() {" --from-replacement 2>&1; then
-    echo "Write succeeded"
+if $BIN write --file "examples/demo_norep.rs" --anchor "fn demo() {" --from-replacement 2>&1 | grep -q "NO_REPLACEMENT"; then
+    echo "Write failed with NO_REPLACEMENT (expected)"
 else
     echo "Write failed (expected NO_REPLACEMENT)"
 fi
