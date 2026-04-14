@@ -1,7 +1,7 @@
 # Sample File for pi-anchorscope Tutorial
 
 ## Section 1
-// This is a comment
+// Modified: Comment updated via AnchorScope
 fn main() {
     println!("Hello, World!");
 }
