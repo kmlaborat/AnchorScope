@@ -2,7 +2,7 @@
 
 def process_data():
     """Process incoming data from external sources."""
-    for i in range(20):
+    for i in range(10):
         print(f"Processing {i}")
     print("Data processing complete")
 
