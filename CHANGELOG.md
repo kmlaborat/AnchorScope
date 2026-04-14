@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Documentation
+- **Tutorial restructuring**: Reorganized `docs/tutorials/AnchorScope-tutorial.md` by topic
+  - 16 sections covering all core features
+  - 3-level nesting examples for Multi-Level Anchoring
+  - Complete Showcase section with full workflow integration
+  - Feature checklist mapping all showcases to tutorial sections
+- **Examples folder removed**: Deleted `examples/` directory
+  - All showcase content moved to tutorial
+  - README updated to reference tutorial instead of examples
+
 ### Added
 - `pipe` command for external tool integration via stdout/stdin or file I/O
 - `paths` command for buffer file path resolution
