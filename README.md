@@ -7,31 +7,19 @@
 ## 📚 Documentation
 
 - **[AnchorScope Tutorial](docs/tutorials/AnchorScope-tutorial.md)** - Complete guide to using the AnchorScope CLI
-- **[AnchorScope v1.3.0 Showcase](examples/v1_3_0_showcase.sh)** - Live demo of all features
+- **[AnchorScope Tutorial](docs/tutorials/AnchorScope-tutorial.md)** - Complete guide to using the AnchorScope CLI with practical examples
 
 ---
 
-## 🚀 Quick Start / Demo
+## 🚀 Quick Start
 
-See AnchorScope v1.3.0 in action with the built-in showcase:
+See the [AnchorScope Tutorial](docs/tutorials/AnchorScope-tutorial.md) for a comprehensive guide covering all features with practical examples:
 
-```bash
-cd examples && bash v1_3_0_showcase.sh
-```
-
-This script demonstrates:
 - **Multi-Level Anchoring**: Nest anchors to isolate precise targets within large scopes
 - **True ID & Alias**: Auto-generated True IDs and human-readable aliases via `label`
 - **Buffer Visualization**: Inspect the anchor tree with `tree`
 - **External Tool Pipeline**: Bridge with external tools via `pipe` and `paths`
-- **Deterministic Safety**: Watch `HASH_MISMATCH`, `NO_MATCH`, and `AMBIGUOUS_REPLACEMENT` prevent unsafe edits
-
-Previous showcases are also available:
-
-```bash
-cd examples && bash v1_1_0_showcase.sh   # Auto-labeling & label management
-cd examples && bash v1_2_0_showcase.sh   # Multi-level anchoring & True IDs
-```
+- **Deterministic Safety**: Learn how `HASH_MISMATCH`, `NO_MATCH`, and `AMBIGUOUS_REPLACEMENT` prevent unsafe edits
 
 ---
 

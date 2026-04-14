@@ -1,4 +1,4 @@
-# pi-anchorscope Tutorial
+# AnchorScope Tutorial
 
 A comprehensive guide to using pi-anchorscope skills with the AnchorScope protocol.
 
@@ -498,53 +498,27 @@ OK: written 68 bytes
 
 ---
 
-## 10. Examples Folder - v1.3.0 Showcase
+## 10. Multi-Level Anchoring
 
-The `examples/v1_3_0_showcase.sh` script demonstrates:
+Nested anchoring allows you to target specific patterns within larger scopes. The True ID encodes parent context, making nested anchors uniquely identifiable.
 
-### 10.1 Multi-Level Anchoring
-
-Level 1 anchors the outer function, Level 2 anchors a pattern inside it:
+### 10.1 Level 1: Anchor the Outer Scope
 
 ```bash
-# Level 1: Anchor the calculate_area function
-anchorscope read --file demo_target.rs --anchor "fn calculate_area(...) -> f64 {...}"
-
-# Level 2: Nested anchor inside the function buffer
-anchorscope read --true-id <func_true_id> --anchor "// Formula: ..."
+anchorscope read --file demo_target.rs --anchor "fn calculate_area(width: f64, height: f64) -> f64 {\n    // Calculate the area of a rectangle\n    // Formula: width * height\n    width * height\n}"
 ```
 
-### 10.2 External Tool Integration via Pipe
+### 10.2 Level 2: Nested Anchor Inside the Buffer
 
 ```bash
-# Stream content to stdout
-anchorscope pipe --true-id <true_id> --out
+# Get the True ID from Level 1
+TRUE_ID=$(anchorscope read --file demo_target.rs --anchor "fn calculate_area(width: f64, height: f64) -> f64 {\n    // Calculate the area of a rectangle\n    // Formula: width * height\n    width * height\n}" | grep "^true_id=" | cut -d= -f2)
 
-# Pipe through external tool
-anchorscope pipe --true-id <true_id> --out | transform-tool | anchorscope pipe --true-id <true_id> --in
+# Anchor a pattern inside the function buffer
+anchorscope read --true-id $TRUE_ID --anchor "// Formula: width * height"
 ```
 
-### 10.3 Buffer Path Access
-
-```bash
-# Get buffer paths for debugging
-anchorscope paths --label <name>
-```
-
-### 10.4 Safety Mechanisms
-
-- **HASH_MISMATCH**: Prevents writes if file changed since read
-- **AMBIGUOUS_REPLACEMENT**: Requires explicit replacement source
-- **NO_REPLACEMENT**: Fails if no replacement specified
-- **MULTIPLE_MATCHES**: Fails if anchor appears multiple times
-
----
-
-## 11. Examples Folder - v1.2.0 Showcase
-
-The `examples/v1_2_0_showcase.sh` script demonstrates:
-
-### 11.1 Multi-Level Anchoring for Ambiguous Patterns
+### 10.3 Why Multi-Level Anchoring?
 
 When the same pattern appears multiple times in a file, nested anchoring makes it uniquely targetable:
 
@@ -557,50 +531,170 @@ anchorscope read --file demo_target.py --anchor "def process_data():"
 anchorscope read --file demo_target.py --label func_data --anchor "for i in range(10):"
 ```
 
-### 11.2 Buffer Structure
+---
 
+## 11. Safety Mechanisms
+
+AnchorScope provides several safety mechanisms to prevent unsafe edits:
+
+### 11.1 HASH_MISMATCH
+
+Prevents writes if the file has changed since the read operation.
+
+```bash
+# Read with hash
+anchorscope read --file demo_target.rs --anchor "fn demo() {"
+# Get the hash value
+
+# Modify the file
+echo "fn demo() { modified }" > demo_target.rs
+
+# Try to write with old hash
+anchorscope write --file demo_target.rs --anchor "fn demo() {" --expected-hash <old_hash> --replacement "new content"
+# Output: HASH_MISMATCH
 ```
-{TMPDIR}/anchorscope/{file_hash}/{true_id}/content
+
+### 11.2 AMBIGUOUS_REPLACEMENT
+
+Requires explicit replacement source (`--replacement` or `--from-replacement`).
+
+```bash
+# Using both flags causes error
+anchorscope write --file demo_target.rs --anchor "fn demo() {" --replacement "new" --from-replacement
+# Output: AMBIGUOUS_REPLACEMENT
 ```
 
-### 11.3 HASH_MISMATCH Safety
+### 11.3 NO_REPLACEMENT
 
-If the file changes between read and write, the write fails safely.
+Fails if no replacement is specified.
+
+```bash
+anchorscope write --file demo_target.rs --anchor "fn demo() {" --from-replacement
+# Output: NO_REPLACEMENT
+```
+
+### 11.4 MULTIPLE_MATCHES
+
+Fails if anchor appears multiple times.
+
+```bash
+echo -e "// First\n// First" > demo_multi.rs
+anchorscope read --file demo_multi.rs --anchor "// First"
+# Output: MULTIPLE_MATCHES (2)
+```
 
 ---
 
-## 12. Examples Folder - v1.1.0 Showcase
+## 12. Complete Showcase: Multi-Step Workflow
 
-The `examples/v1_1_0_showcase.sh` script demonstrates:
+This section demonstrates a complete workflow combining all features, similar to the v1.3.0 showcase:
 
-### 12.1 Auto-Labeling
-
-The `read` command generates an internal label automatically:
-
-```
-label=<internal-label>
-```
-
-### 12.2 Human-Readable Label Assignment
+### 12.1 Setup: Create a Working Copy
 
 ```bash
-anchorscope label --name <name> --internal-label <internal-label>
+# Create demo file
+cat > demo_target.rs << 'RUST_CODE'
+// Geometry calculator
+// This module provides functions for calculating area and perimeter
+
+fn calculate_area(width: f64, height: f64) -> f64 {
+    // Calculate the area of a rectangle
+    // Formula: width * height
+    width * height
+}
+
+fn calculate_perimeter(width: f64, height: f64) -> f64 {
+    // Calculate the perimeter of a rectangle
+    // Formula: 2 * (width + height)
+    2.0 * (width + height)
+}
+
+fn main() {
+    let w = 5.0;
+    let h = 3.0;
+    println!("Area: {}", calculate_area(w, h));
+    println!("Perimeter: {}", calculate_perimeter(w, h));
+}
+RUST_CODE
 ```
 
-### 12.3 Label-Based Writes
+### 12.2 Step 1: Level 1 - Anchor the Outer Function
 
 ```bash
-anchorscope write --file <path> --label <name> --replacement <content>
+ANCHOR_FUNC='fn calculate_area(width: f64, height: f64) -> f64 {
+    // Calculate the area of a rectangle
+    // Formula: width * height
+    width * height
+}'
+
+anchorscope read --file demo_target.rs --anchor "$ANCHOR_FUNC"
 ```
 
-### 12.4 Safety Failures
+### 12.3 Step 2: Create a Human-Readable Label
 
-- **NO_MATCH**: Label's anchor no longer exists after modification
-- **HASH_MISMATCH**: File changed between read and write
+```bash
+TRUE_ID_FUNC=$(anchorscope read --file demo_target.rs --anchor "$ANCHOR_FUNC" | grep "^true_id=" | head -1 | cut -d= -f2)
+anchorscope label --name "func_area" --true-id "$TRUE_ID_FUNC"
+```
+
+### 12.4 Step 3: Level 2 - Nested Anchor
+
+```bash
+ANCHOR_FORMULA="// Formula: width * height"
+anchorscope read --true-id "$TRUE_ID_FUNC" --anchor "$ANCHOR_FORMULA"
+
+TRUE_ID_NESTED=$(anchorscope read --true-id "$TRUE_ID_FUNC" --anchor "$ANCHOR_FORMULA" | grep "^true_id=" | head -1 | cut -d= -f2)
+SCOPE_HASH_NESTED=$(anchorscope read --true-id "$TRUE_ID_FUNC" --anchor "$ANCHOR_FORMULA" | grep "^hash=" | head -1 | cut -d= -f2)
+```
+
+### 12.5 Step 4: Create Label for Nested Anchor
+
+```bash
+anchorscope label --name "area_formula" --true-id "$TRUE_ID_NESTED"
+```
+
+### 12.6 Step 5: Pipe Command - stdout Mode
+
+```bash
+anchorscope pipe --true-id "$TRUE_ID_NESTED" --out
+```
+
+### 12.7 Step 6: Pipe Command - Write Replacement via stdin
+
+```bash
+PIPE_OUT=$(anchorscope pipe --true-id "$TRUE_ID_NESTED" --out)
+echo "$PIPE_OUT" | sed 's/width \* height/(width * height) + 1/' | anchorscope pipe --true-id "$TRUE_ID_NESTED" --in
+```
+
+### 12.8 Step 7: Write from Replacement to File
+
+```bash
+anchorscope write --true-id "$TRUE_ID_NESTED" --anchor "$ANCHOR_FORMULA" --expected-hash "$SCOPE_HASH_NESTED" --from-replacement
+```
+
+### 12.9 Step 8: Verify the Change
+
+```bash
+cat demo_target.rs
+```
 
 ---
 
 ## 13. Common Workflow
+
+```bash
+# 1. Read to get True ID and hash
+anchorscope read --file file.rs --anchor "fn main()"
+
+# 2. (Optional) Create label for easier reference
+anchorscope label --name "main" --true-id <true_id>
+
+# 3. Prepare replacement via pipe
+anchorscope pipe --label "main" --out | transform-tool | anchorscope pipe --label "main" --in
+
+# 4. Write with hash verification
+anchorscope write --label "main" --from-replacement
+```
 
 ```bash
 # 1. Read to get True ID and hash
@@ -676,3 +770,5 @@ anchorscope pipe --label "main" --out | transform-tool | anchorscope pipe --labe
 # 4. Write with hash verification
 anchorscope write --label "main" --from-replacement
 ```
+
+---
