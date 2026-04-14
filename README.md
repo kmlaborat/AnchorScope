@@ -4,13 +4,6 @@
 
 ---
 
-## 📚 Documentation
-
-- **[AnchorScope Tutorial](docs/tutorials/AnchorScope-tutorial.md)** - Complete guide to using the AnchorScope CLI
-- **[AnchorScope Tutorial](docs/tutorials/AnchorScope-tutorial.md)** - Complete guide to using the AnchorScope CLI with practical examples
-
----
-
 ## 🚀 Quick Start
 
 See the [AnchorScope Tutorial](docs/tutorials/AnchorScope-tutorial.md) for a comprehensive guide covering all features with practical examples:
