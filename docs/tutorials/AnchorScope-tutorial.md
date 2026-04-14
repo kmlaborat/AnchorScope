@@ -498,7 +498,19 @@ TRUE_ID=$(anchorscope read --file demo_target.rs --anchor "fn calculate_area(wid
 anchorscope read --true-id $TRUE_ID --anchor "// Formula: width * height"
 ```
 
-### 10.3 Why Multi-Level Anchoring?
+### 10.3 Level 3: Deeper Nesting
+
+You can continue nesting to target even more specific patterns. The True ID from Level 2 becomes the parent context for Level 3:
+
+```bash
+# Get the True ID from Level 2
+TRUE_ID_LEVEL2=$(anchorscope read --true-id $TRUE_ID --anchor "// Formula: width * height" | grep "^true_id=" | cut -d= -f2)
+
+# Anchor a more specific pattern inside the Level 2 buffer
+anchorscope read --true-id $TRUE_ID_LEVEL2 --anchor "width * height"
+```
+
+### 10.4 Why Multi-Level Anchoring?
 
 When the same pattern appears multiple times in a file, nested anchoring makes it uniquely targetable:
 
@@ -509,6 +521,9 @@ anchorscope read --file demo_target.py --anchor "def process_data():"
 
 # Level 2: Anchor the loop inside the function buffer
 anchorscope read --file demo_target.py --label func_data --anchor "for i in range(10):"
+
+# Level 3: If the loop contains another repeating pattern, anchor it inside the loop buffer
+anchorscope read --file demo_target.py --label loop_data --anchor "print(f"Processing {i}")"
 ```
 
 ---
