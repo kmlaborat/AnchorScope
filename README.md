@@ -6,6 +6,28 @@
 
 ## 🚀 Quick Start
 
+First, build the project:
+
+```bash
+cargo build --release
+```
+
+Then run the examples in the [AnchorScope Tutorial](docs/tutorials/AnchorScope-tutorial.md) using:
+
+```bash
+# From project root
+target/release/anchorscope --help
+```
+
+Or install globally:
+
+```bash
+cargo install --path .
+anchorscope --help
+```
+
+### Quick Demo
+
 See the [AnchorScope Tutorial](docs/tutorials/AnchorScope-tutorial.md) for a comprehensive guide covering all features with practical examples:
 
 - **Multi-Level Anchoring**: Nest anchors to isolate precise targets within large scopes
