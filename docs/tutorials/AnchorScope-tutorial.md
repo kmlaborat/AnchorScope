@@ -213,7 +213,6 @@ label=main_function
 anchorscope write \
   --file docs/tutorials/sample.txt \
   --label "main_function" \
-  --expected-hash 22e89e5c1ca0c55d \
   --replacement "fn main() {\n    println!(\"Hello, AnchorScope!\");\n}"
 ```
 
@@ -257,33 +256,14 @@ fn main() {
 ### 5.2 Pipe with Transformation
 
 ```bash
-anchorscope pipe --label "main_function" --out | sed 's/Hello/Hello World/' | anchorscope pipe --label "main_function" --in
-```
+# First read to get the true_id and hash
+anchorscope read --file docs/tutorials/sample.txt --anchor $'fn main() {\n    println!("Hello, World!");\n}'
 
-Output: (no output on success)
+# Pipe with transformation
+anchorscope pipe --true-id <true_id> --out | sed 's/Hello World/Hello World Updated/' | anchorscope pipe --true-id <true_id> --in
 
-### 5.3 Verify the Replacement
-
-```bash
-cat docs/tutorials/sample.txt
-```
-
-Output:
-```
-# Sample File for pi-anchorscope Tutorial
-
-## Section 1
-// Modified: Comment updated via AnchorScope
-fn main() {
-    println!("Hello World, AnchorScope!");
-}
-
-## Section 2
-// Another comment
-fn helper() {
-    println!("Helper function");
-}
-
+# Write from buffer to file
+anchorscope write --true-id <true_id> --expected-hash <hash> --from-replacement
 ```
 
 ---
@@ -352,11 +332,11 @@ This helps you understand the buffer state and debug issues.
 anchorscope tree --file docs/tutorials/sample.txt
 ```
 
-Output:
+Output shows the current buffer structure. When a label is created, it appears in the tree:
 ```
-492b5443ae42e164  (docs/tutorials/sample.txt)
-└── 21b28ed9d6f89d9b  [main_function]
-    └── efc64d6fa480c277  [efc64d6fa480c277]
+099375c8a05dbedb  (\?\C:\path\to\file.rs)
+├── 445a9ef90dcde6a5  [main_function]
+└── 8db42edf7905d28f  [helper]
 ```
 
 ### 7.2 Filter by File
@@ -421,7 +401,7 @@ HASH_MISMATCH: expected=0000000000000000 actual=5d7008ad1b1478cb
 ```bash
 anchorscope write \
   --file docs/tutorials/sample.txt \
-  --anchor "// Modified: Comment updated via AnchorScope" \
+  --anchor "// This is a comment" \
   --expected-hash 5d7008ad1b1478cb
 ```
 
