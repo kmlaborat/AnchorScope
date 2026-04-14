@@ -45,10 +45,15 @@ true_id=445a9ef90dcde6a5
 The output includes:
 - `start_line`: 1-based line number of anchor start
 - `end_line`: 1-based line number of anchor end
-- `hash`: 16-char hex for use with `--expected-hash`
-- `true_id`: 16-char hex for buffer operations
+- `hash`: 16-char hex for hash verification in `--expected-hash`
+- `true_id`: 16-char hex for buffer/pipeline operations
 - `content`: The matched anchor text
 - `label`: Auto-generated label (same as hash)
+
+**Conceptual distinction:**
+- `hash` = **Content verification** - "Is this code exactly the same as when I read it?" Used for safety in write operations.
+- `true_id` = **Buffer identification** - "Which buffer slot is this in my local temp directory?" Used for pipe/label operations.
+- `label` = **Human-readable alias** for `true_id` convenience.
 
 ### 2.2 Multi-Line Anchor
 
@@ -157,6 +162,8 @@ This is useful when:
 - You need to inspect the buffer before committing
 - You want to chain multiple buffer operations
 
+**Note:** On Windows, ensure your shell preserves escape sequences in `--replacement` strings (e.g., `\n` becomes actual newlines). Use here-docs or anchor files for multiline content.
+
 ---
 
 ## 4. Label Management
@@ -239,6 +246,21 @@ anchorscope pipe --label <name> --tool <tool> --file-io --tool-args "<args>"
 The `replacement` file is used by `anchorscope write --from-replacement.`
 
 **Note:** The `--tool` and `--tool-args` options may have limited support on Windows.
+
+**Windows Users:** When `--tool` is not available, use manual pipe workflow:
+```bash
+# 1. Stream content to a file
+anchorscope pipe --true-id <true_id> --out > temp_content.txt
+
+# 2. Process with external tool
+your-tool.exe temp_content.txt temp_output.txt
+
+# 3. Write output back to buffer
+cat temp_output.txt | anchorscope pipe --true-id <true_id> --in
+
+# 4. Write to file
+anchorscope write --true-id <true_id> --from-replacement
+```
 
 ### 5.1 Pipe Content to External Tool
 
@@ -486,6 +508,7 @@ Nested anchoring allows you to target specific patterns within larger scopes. Th
 
 ```bash
 anchorscope read --file demo_target.rs --anchor "fn calculate_area(width: f64, height: f64) -> f64 {\n    // Calculate the area of a rectangle\n    // Formula: width * height\n    width * height\n}"
+# Note: On Windows, use here-docs or anchor files for multiline anchors to avoid shell escaping issues
 ```
 
 ### 10.2 Level 2: Nested Anchor Inside the Buffer
@@ -496,6 +519,7 @@ TRUE_ID=$(anchorscope read --file demo_target.rs --anchor "fn calculate_area(wid
 
 # Anchor a pattern inside the function buffer
 anchorscope read --true-id $TRUE_ID --anchor "// Formula: width * height"
+# Note: Ensure the variable does not contain spaces or special characters that break the shell command
 ```
 
 ### 10.3 Level 3: Deeper Nesting
@@ -508,7 +532,10 @@ TRUE_ID_LEVEL2=$(anchorscope read --true-id $TRUE_ID --anchor "// Formula: width
 
 # Anchor a more specific pattern inside the Level 2 buffer
 anchorscope read --true-id $TRUE_ID_LEVEL2 --anchor "width * height"
+# Note: Shell variables must not contain spaces or special characters that break the command
 ```
+
+**Implementation Note:** The `true_id` from Level 2 is stored in the buffer as `{file_hash}/{parent_true_id}/{child_true_id}/content`, encoding the full hierarchy. This ensures unique identification even for identical patterns at different nesting levels.
 
 ### 10.4 Why Multi-Level Anchoring?
 
@@ -588,6 +615,8 @@ This section demonstrates a complete workflow combining all features, similar to
 
 ```bash
 # Create demo file
+# Note: On Windows, use 'type con' or a text editor for multiline strings
+# For shell scripts, single quotes preserve \n as literal characters
 cat > demo_target.rs << 'RUST_CODE'
 // Geometry calculator
 // This module provides functions for calculating area and perimeter
@@ -623,6 +652,7 @@ ANCHOR_FUNC='fn calculate_area(width: f64, height: f64) -> f64 {
 }'
 
 anchorscope read --file demo_target.rs --anchor "$ANCHOR_FUNC"
+# Note: Ensure the variable does not contain spaces or special characters that break the shell command
 ```
 
 ### 12.3 Step 2: Create a Human-Readable Label
@@ -676,20 +706,6 @@ cat demo_target.rs
 ---
 
 ## 13. Common Workflow
-
-```bash
-# 1. Read to get True ID and hash
-anchorscope read --file file.rs --anchor "fn main()"
-
-# 2. (Optional) Create label for easier reference
-anchorscope label --name "main" --true-id <true_id>
-
-# 3. Prepare replacement via pipe
-anchorscope pipe --label "main" --out | transform-tool | anchorscope pipe --label "main" --in
-
-# 4. Write with hash verification
-anchorscope write --label "main" --from-replacement
-```
 
 ```bash
 # 1. Read to get True ID and hash
