@@ -16,3 +16,6 @@ nul
 
 # Archive / reference specs (not part of release)
 docs/archive/
+
+# Plans (not part of release)
+docs/plans/
