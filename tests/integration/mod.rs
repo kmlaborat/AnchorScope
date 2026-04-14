@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod anchor_file_tests;
 #[cfg(test)]
+mod duplicate_true_id_error_tests;
+#[cfg(test)]
 mod edge_normalization_tests;
 #[cfg(test)]
 mod edge_position_tests;

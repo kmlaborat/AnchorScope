@@ -275,19 +275,46 @@ fn execute_file_io(
         }
     };
 
-    // Write input to stdin
-    if std::io::Write::write_all(&mut child.stdin.take().unwrap(), &input_content).is_err() {
-        eprintln!("IO_ERROR: cannot write to tool stdin");
-        return 1;
-    }
+    // Take stdin and stdout pipes
+    let mut child_stdin = child.stdin.take().expect("Failed to take stdin");
+    let mut child_stdout = child.stdout.take().expect("Failed to take stdout");
 
-    // Wait for tool to complete and get output
+    // Write to stdin in a separate thread to prevent deadlock
+    let stdin_handle = std::thread::spawn(move || {
+        std::io::Write::write_all(&mut child_stdin, &input_content)
+    });
+
+    // Read stdout while stdin is being written
+    let mut output_buffer = Vec::new();
+    let stdout_result = std::io::Read::read_to_end(&mut child_stdout, &mut output_buffer);
+
+    // Wait for stdin write to complete
+    let stdin_result = stdin_handle.join().unwrap();
+
+    // Wait for child process
     let output = match child.wait_with_output() {
         Ok(o) => o,
         Err(_) => {
             eprintln!("IO_ERROR: cannot read tool output");
             return 1;
         }
+    };
+
+    // Check for I/O errors
+    if stdin_result.is_err() {
+        eprintln!("IO_ERROR: cannot write to tool stdin");
+        return 1;
+    }
+    if stdout_result.is_err() {
+        eprintln!("IO_ERROR: cannot read tool stdout");
+        return 1;
+    }
+
+    // Use the output_buffer instead of output.stdout
+    let output = std::process::Output {
+        status: output.status,
+        stdout: output_buffer,
+        stderr: output.stderr,
     };
 
     if !output.status.success() {
@@ -611,6 +638,132 @@ mod tests {
             std::fs::read(buffer_path::true_id_dir(&file_hash, &true_id).join("replacement"))
                 .unwrap();
         assert_eq!(saved, b"line1\nline2\n", "CRLF should be normalized to LF");
+
+        // Cleanup
+        storage::invalidate_true_id_hierarchy(&file_hash, &true_id).unwrap();
+        let _ = std::fs::remove_dir_all(tmp_dir);
+    }
+
+    #[test]
+    fn pipe_file_io_mode_handles_large_content_without_deadlock() {
+        // Setup: Create buffer content larger than pipe buffer (64KB)
+        let content = vec![b'A'; 70 * 1024]; // 70KB
+        let file_hash = crate::hash::compute(&content);
+        let true_id = "test_large_content";
+
+        storage::save_file_content(&file_hash, &content).unwrap();
+        storage::save_buffer_content(&file_hash, &true_id, &content).unwrap();
+        storage::save_buffer_metadata(
+            &file_hash,
+            &true_id,
+            &storage::BufferMeta {
+                true_id: true_id.to_string(),
+                parent_true_id: None,
+                scope_hash: crate::hash::compute(&content),
+                anchor: "test".to_string(),
+            },
+        )
+        .unwrap();
+        storage::save_source_path(&file_hash, "/tmp/test.txt").unwrap();
+
+        // Create a simple tool that echoes input to output (cat on Unix, findstr on Windows)
+        #[cfg(unix)]
+        let tool = "cat";
+        #[cfg(windows)]
+        let tool = "findstr";
+        #[cfg(windows)]
+        let tool_args = Some(".");
+        #[cfg(unix)]
+        let tool_args: Option<&str> = None;
+
+        // Simulate the execute_file_io flow with large content
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let output_path = tmp_dir.path().join("output.txt");
+
+        // Execute external tool with concurrent I/O
+        let mut cmd = std::process::Command::new(tool);
+        if let Some(args) = tool_args {
+            let parts: Vec<&str> = args.split_whitespace().collect();
+            cmd.args(&parts);
+        }
+
+        cmd.stdin(std::process::Stdio::piped());
+        cmd.stdout(std::process::Stdio::piped());
+
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Failed to spawn command: {}", e);
+                // Skip test if tool not available
+                storage::invalidate_true_id_hierarchy(&file_hash, &true_id).unwrap();
+                return;
+            }
+        };
+
+        // Take stdin and stdout pipes
+        let mut child_stdin = child.stdin.take().expect("Failed to take stdin");
+        let mut child_stdout = child.stdout.take().expect("Failed to take stdout");
+
+        // Write to stdin in a separate thread to prevent deadlock
+        let content_for_thread = content.clone();
+        let stdin_handle = std::thread::spawn(move || {
+            std::io::Write::write_all(&mut child_stdin, &content_for_thread)
+        });
+
+        // Read stdout while stdin is being written
+        let mut output_buffer = Vec::new();
+        let stdout_result = std::io::Read::read_to_end(&mut child_stdout, &mut output_buffer);
+
+        // Wait for stdin write to complete
+        let stdin_result = stdin_handle.join().unwrap();
+
+        // Wait for child process
+        let output = match child.wait_with_output() {
+            Ok(o) => o,
+            Err(_) => {
+                storage::invalidate_true_id_hierarchy(&file_hash, &true_id).unwrap();
+                panic!("Failed to wait for child process");
+            }
+        };
+
+        // Check for I/O errors
+        assert!(stdin_result.is_ok(), "stdin write should succeed");
+        assert!(stdout_result.is_ok(), "stdout read should succeed");
+        assert!(output.status.success(), "tool should succeed");
+
+        // Verify output is close to input size (findstr may add/modify line endings on Windows)
+        #[cfg(windows)]
+        assert!(
+            output_buffer.len() >= content.len() && output_buffer.len() <= content.len() + 10,
+            "output size should be close to input size on Windows"
+        );
+        #[cfg(unix)]
+        assert_eq!(output_buffer.len(), content.len(), "output should match input size");
+        
+        // Verify content is mostly the same (allowing for line ending differences on Windows)
+        #[cfg(unix)]
+        assert_eq!(output_buffer, content, "output should match input content");
+
+        // Write to output file for validation
+        std::fs::write(&output_path, &output_buffer).unwrap();
+
+        // Validate and store
+        let result = validate_and_store_replacement(&true_id, &output_path);
+        assert!(result.is_ok(), "validate_and_store_replacement should succeed");
+
+        // Verify replacement file
+        let replacement_path = buffer_path::true_id_dir(&file_hash, &true_id).join("replacement");
+        assert!(replacement_path.exists(), "replacement file should exist");
+
+        let saved = std::fs::read(&replacement_path).unwrap();
+        // Allow small size differences on Windows due to line ending handling
+        #[cfg(windows)]
+        assert!(
+            saved.len() >= content.len() && saved.len() <= content.len() + 10,
+            "saved content size should be close to input size on Windows"
+        );
+        #[cfg(unix)]
+        assert_eq!(saved.len(), content.len(), "saved content should match input size");
 
         // Cleanup
         storage::invalidate_true_id_hierarchy(&file_hash, &true_id).unwrap();

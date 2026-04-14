@@ -347,11 +347,10 @@ pub fn file_hash_for_true_id(true_id: &str) -> Result<String, AnchorScopeError> 
         Ok(None) => Err(AnchorScopeError::BufferNotFound),
         Err(AmbiguousAnchorError {
             true_id: _tid,
-            locations,
+            locations: _locations,
         }) => {
-            let _locations_str: Vec<String> =
-                locations.iter().map(|p| p.display().to_string()).collect();
-            Err(AnchorScopeError::BufferNotFound)
+            // SPEC \u00a73.2: Return DUPLICATE_TRUE_ID for ambiguous anchors
+            Err(AnchorScopeError::DuplicateTrueId)
         }
     }
 }
@@ -705,4 +704,63 @@ pub fn true_id_exists(file_hash: &str, true_id: &str) -> bool {
     }
 
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_hash_for_true_id_returns_duplicate_true_id_on_ambiguity() {
+        // Setup: Create same true_id in two different file_hash directories
+        let content1 = b"test content 1";
+        let content2 = b"test content 2";
+        let file_hash1 = crate::hash::compute(content1);
+        let file_hash2 = crate::hash::compute(content2);
+        let true_id = "duplicate_test";
+
+        // Save in first location
+        save_file_content(&file_hash1, content1).unwrap();
+        save_buffer_content(&file_hash1, &true_id, content1).unwrap();
+        save_buffer_metadata(
+            &file_hash1,
+            &true_id,
+            &BufferMeta {
+                true_id: true_id.to_string(),
+                parent_true_id: None,
+                scope_hash: crate::hash::compute(content1),
+                anchor: "test".to_string(),
+            },
+        )
+        .unwrap();
+
+        // Save in second location (same true_id, different file_hash)
+        save_file_content(&file_hash2, content2).unwrap();
+        save_buffer_content(&file_hash2, &true_id, content2).unwrap();
+        save_buffer_metadata(
+            &file_hash2,
+            &true_id,
+            &BufferMeta {
+                true_id: true_id.to_string(),
+                parent_true_id: None,
+                scope_hash: crate::hash::compute(content2),
+                anchor: "test".to_string(),
+            },
+        )
+        .unwrap();
+
+        // Should return DuplicateTrueId error
+        let result = file_hash_for_true_id(&true_id);
+        assert!(result.is_err(), "should return error for duplicate true_id");
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.to_spec_string(),
+            "DUPLICATE_TRUE_ID",
+            "should return DuplicateTrueId, not BufferNotFound"
+        );
+
+        // Cleanup
+        invalidate_true_id_hierarchy(&file_hash1, &true_id).unwrap();
+        invalidate_true_id_hierarchy(&file_hash2, &true_id).unwrap();
+    }
 }
