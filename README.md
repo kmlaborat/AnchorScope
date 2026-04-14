@@ -6,7 +6,7 @@
 
 ## 📚 Documentation
 
-- **[pi-anchorscope Tutorial](docs/tutorials/pi-anchorscope-tutorial.md)** - Complete guide to using pi-anchorscope skills
+- **[AnchorScope Tutorial](docs/tutorials/AnchorScope-tutorial.md)** - Complete guide to using the AnchorScope CLI
 - **[AnchorScope v1.3.0 Showcase](examples/v1_3_0_showcase.sh)** - Live demo of all features
 
 ---
