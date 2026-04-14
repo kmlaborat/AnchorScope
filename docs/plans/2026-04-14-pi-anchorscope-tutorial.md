@@ -11,6 +11,9 @@
 4. Paths mode for debugging
 5. Tree visualization for buffer structure
 6. All error conditions with examples
+7. v1.3.0 Showcase examples (v1_3_0_showcase.sh)
+8. v1.2.0 Showcase examples (v1_2_0_showcase.sh)
+9. v1.1.0 Showcase examples (v1_1_0_showcase.sh)
 
 **Tech Stack:** 
 - pi coding agent (v0.22.0+)
@@ -508,7 +511,171 @@ File-based anchors:
 
 ---
 
-## Task 10: Cleanup and Summary
+## Task 10: Examples Folder - v1.3.0 Showcase
+
+**Files:**
+- Tutorial file: `docs/tutorials/pi-anchorscope-tutorial.md`
+- Demo file: `examples/demo_target.rs`
+
+**Step 1: Run v1_3_0_showcase.sh and document results**
+
+```bash
+bash examples/v1_3_0_showcase.sh
+```
+
+Expected demonstration topics:
+1. Multi-level anchoring for precise code editing
+2. External tool integration via pipe command
+3. Buffer path access via paths command
+4. Safety mechanisms (HASH_MISMATCH, AMBIGUOUS_REPLACEMENT, etc.)
+
+**Step 2: Document showcase results in tutorial**
+
+Add to tutorial:
+```markdown
+## 10. Examples Folder - v1.3.0 Showcase
+
+The `examples/v1_3_0_showcase.sh` script demonstrates:
+
+### 10.1 Multi-Level Anchoring
+
+Level 1 anchors the outer function, Level 2 anchors a pattern inside it:
+
+```bash
+# Level 1: Anchor the calculate_area function
+anchorscope read --file demo_target.rs --anchor "fn calculate_area(...) -> f64 {...}"
+
+# Level 2: Nested anchor inside the function buffer
+anchorscope read --true-id <func_true_id> --anchor "// Formula: ..."
+```
+
+### 10.2 External Tool Integration via Pipe
+
+```bash
+# Stream content to stdout
+anchorscope pipe --true-id <true_id> --out
+
+# Pipe through external tool
+anchorscope pipe --true-id <true_id> --out | transform-tool | anchorscope pipe --true-id <true_id> --in
+```
+
+### 10.3 Buffer Path Access
+
+```bash
+# Get buffer paths for debugging
+anchorscope paths --label <name>
+```
+
+### 10.4 Safety Mechanisms
+
+- **HASH_MISMATCH**: Prevents writes if file changed since read
+- **AMBIGUOUS_REPLACEMENT**: Requires explicit replacement source
+- **NO_REPLACEMENT**: Fails if no replacement specified
+- **MULTIPLE_MATCHES**: Fails if anchor appears multiple times
+```
+
+---
+
+## Task 11: Examples Folder - v1.2.0 Showcase
+
+**Files:**
+- Tutorial file: `docs/tutorials/pi-anchorscope-tutorial.md`
+- Demo file: `examples/demo_target.py`
+
+**Step 1: Run v1_2_0_showcase.sh and document results**
+
+```bash
+bash examples/v1_2_0_showcase.sh
+```
+
+Expected demonstration topics:
+1. Multi-level anchoring for ambiguous patterns
+2. Label management with nested anchors
+3. HASH_MISMATCH safety demonstration
+
+**Step 2: Document showcase results in tutorial**
+
+Add to tutorial:
+```markdown
+## 11. Examples Folder - v1.2.0 Showcase
+
+The `examples/v1_2_0_showcase.sh` script demonstrates:
+
+### 11.1 Multi-Level Anchoring for Ambiguous Patterns
+
+When the same pattern appears multiple times in a file, nested anchoring makes it uniquely targetable:
+
+```bash
+# File has TWO 'for i in range(10):' loops
+# Level 1: Anchor the specific function
+anchorscope read --file demo_target.py --anchor "def process_data():"
+
+# Level 2: Anchor the loop inside the function buffer
+anchorscope read --file demo_target.py --label func_data --anchor "for i in range(10):"
+```
+
+### 11.2 Buffer Structure
+
+```
+{TMPDIR}/anchorscope/{file_hash}/{true_id}/content
+```
+
+### 11.3 HASH_MISMATCH Safety
+
+If the file changes between read and write, the write fails safely.
+
+---
+
+## Task 12: Examples Folder - v1.1.0 Showcase
+
+**Files:**
+- Tutorial file: `docs/tutorials/pi-anchorscope-tutorial.md`
+- Demo file: `examples/demo_target.txt`
+
+**Step 1: Analyze v1_1_0_showcase.sh and document results**
+
+Expected demonstration topics:
+1. Auto-labeling (internal label generation)
+2. Human-readable label assignment
+3. Label-based writes
+4. Safety failures (NO_MATCH, HASH_MISMATCH)
+
+**Step 2: Document showcase results in tutorial**
+
+Add to tutorial:
+```markdown
+## 12. Examples Folder - v1.1.0 Showcase
+
+The `examples/v1_1_0_showcase.sh` script demonstrates:
+
+### 12.1 Auto-Labeling
+
+The `read` command generates an internal label automatically:
+
+```
+label=<internal-label>
+```
+
+### 12.2 Human-Readable Label Assignment
+
+```bash
+anchorscope label --name <name> --internal-label <internal-label>
+```
+
+### 12.3 Label-Based Writes
+
+```bash
+anchorscope write --file <path> --label <name> --replacement <content>
+```
+
+### 12.4 Safety Failures
+
+- **NO_MATCH**: Label's anchor no longer exists after modification
+- **HASH_MISMATCH**: File changed between read and write
+
+---
+
+## Task 13: Cleanup and Summary
 
 **Files:**
 - Tutorial file: `docs/tutorials/pi-anchorscope-tutorial.md`
@@ -572,6 +739,24 @@ anchorscope write --label "main" --from-replacement
 
 ---
 
+## Task 14: Update README
+
+**Files:**
+- Tutorial file: `docs/tutorials/pi-anchorscope-tutorial.md`
+- Main README: `README.md`
+
+**Step 1: Add tutorial link to README**
+
+Add to README:
+```markdown
+## Documentation
+
+- **[pi-anchorscope Tutorial](docs/tutorials/pi-anchorscope-tutorial.md)** - Complete guide to using pi-anchorscope skills
+- **[AnchorScope v1.3.0 Showcase](examples/v1_3_0_showcase.sh)** - Live demo of all features
+```
+
+---
+
 ## Execution Notes
 
 1. Run each step and capture exact output
@@ -579,3 +764,5 @@ anchorscope write --label "main" --from-replacement
 3. Include both successful and error outputs
 4. Test on Windows (since this is the current environment)
 5. Ensure all paths use forward slashes or proper escaping
+6. Run examples folder scripts and capture actual output
+7. Verify all examples work with the current pi-anchorscope version
