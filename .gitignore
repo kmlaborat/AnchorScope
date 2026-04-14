@@ -13,6 +13,7 @@ nul
 
 # AI tools
 .qwen/
+.pi/
 
 # Archive / reference specs (not part of release)
 docs/archive/
