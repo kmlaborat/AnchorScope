@@ -1,0 +1,13 @@
+# Sample File for pi-anchorscope Tutorial
+
+## Section 1
+// This is a comment
+fn main() {
+    println!("Hello, World!");
+}
+
+## Section 2
+// Another comment
+fn helper() {
+    println!("Helper function");
+}

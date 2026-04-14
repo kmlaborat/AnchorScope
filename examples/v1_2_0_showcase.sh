@@ -13,7 +13,7 @@ echo "appears multiple times in a file."
 echo ""
 
 DEMO_FILE="demo_target.py"
-BIN="./target/debug/anchorscope"
+BIN="anchorscope"
 echo "Target file: $DEMO_FILE"
 echo ""
 
@@ -26,6 +26,11 @@ echo "--- File content (relevant sections) ---"
 grep -n "for i in range(10):" "$DEMO_FILE"
 echo ""
 
+echo "=== Cleanup: Remove any existing labels ==="
+echo "Removing previous labels..."
+rm -rf "${TMPDIR:-/tmp}/anchorscope/labels" 2>/dev/null || true
+echo ""
+
 echo "=== Step 1: Level 1 - Anchor the outer scope ==="
 echo "We first anchor the specific function we want to edit."
 echo "Command: read --file $DEMO_FILE --anchor \"def process_data():\""
@@ -33,7 +38,7 @@ echo ""
 $BIN read --file "$DEMO_FILE" --anchor "def process_data():"
 echo ""
 
-TRUE_ID_FUNC=$($BIN read --file "$DEMO_FILE" --anchor "def process_data():" | grep "^true_id=" | cut -d= -f2)
+TRUE_ID_FUNC=$($BIN read --file "$DEMO_FILE" --anchor "def process_data():" | grep "^true_id=" | head -1 | cut -d= -f2)
 echo "Function True ID: $TRUE_ID_FUNC"
 echo ""
 
@@ -53,7 +58,7 @@ echo ""
 $BIN read --file "$DEMO_FILE" --label func_data --anchor "for i in range(10):"
 echo ""
 
-TRUE_ID_LOOP=$($BIN read --file "$DEMO_FILE" --label func_data --anchor "for i in range(10):" | grep "^true_id=" | cut -d= -f2)
+TRUE_ID_LOOP=$($BIN read --file "$DEMO_FILE" --label func_data --anchor "for i in range(10):" | grep "^true_id=" | head -1 | cut -d= -f2)
 echo "Loop True ID: $TRUE_ID_LOOP"
 echo ""
 

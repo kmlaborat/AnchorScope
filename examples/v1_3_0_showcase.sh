@@ -15,8 +15,8 @@ echo "3. Buffer path access via paths command"
 echo "4. Safety mechanisms (HASH_MISMATCH, AMBIGUOUS_REPLACEMENT, etc.)"
 echo ""
 
-DEMO_FILE="examples/demo_target.rs"
-BIN="./target/release/anchorscope"
+DEMO_FILE="demo_target.rs"
+BIN="anchorscope"
 echo "Target file: $DEMO_FILE"
 echo ""
 
@@ -175,20 +175,20 @@ echo "If we modify the file between read and write, write will fail safely."
 echo ""
 
 echo "Creating test file..."
-echo "fn demo() { x }" > "examples/demo_hash.rs"
+echo "fn demo() { x }" > "demo_hash.rs"
 
 echo "Read the function..."
-HASH_OUTPUT=$($BIN read --file "examples/demo_hash.rs" --anchor "fn demo() {")
+HASH_OUTPUT=$($BIN read --file "demo_hash.rs" --anchor "fn demo() {")
 echo "$HASH_OUTPUT"
 ORIGINAL_HASH=$(echo "$HASH_OUTPUT" | grep "^hash=" | cut -d= -f2)
 echo "Original hash: $ORIGINAL_HASH"
 echo ""
 
 echo "Modifying the file..."
-echo "fn demo() { y }" > "examples/demo_hash.rs"
+echo "fn demo() { y }" > "demo_hash.rs"
 
 echo "Trying to write with original hash..."
-if $BIN write --file "examples/demo_hash.rs" --anchor "fn demo() {" --expected-hash "$ORIGINAL_HASH" --replacement "fn demo() { modified }" 2>&1 | grep -q "HASH_MISMATCH"; then
+if $BIN write --file "demo_hash.rs" --anchor "fn demo() {" --expected-hash "$ORIGINAL_HASH" --replacement "fn demo() { modified }" 2>&1 | grep -q "HASH_MISMATCH"; then
     echo "Write failed with HASH_MISMATCH (expected)"
 else
     echo "Write failed (expected HASH_MISMATCH)"
@@ -196,20 +196,20 @@ fi
 
 echo ""
 echo "Cleaning up..."
-rm -f "examples/demo_hash.rs"
+rm -f "demo_hash.rs"
 echo ""
 
 # Step 13: Demonstrate MULTIPLE_MATCHES
 echo "=== Step 13: Demonstrate MULTIPLE_MATCHES ==="
 echo "Creating file with duplicate patterns..."
-echo -e "// First occurrence\n// First occurrence" > "examples/demo_multi.rs"
+echo -e "// First occurrence\n// First occurrence" > "demo_multi.rs"
 
 echo "File content:"
-cat "examples/demo_multi.rs"
+cat "demo_multi.rs"
 echo ""
 
 echo "Attempting to anchor with non-unique pattern..."
-if $BIN read --file "examples/demo_multi.rs" --anchor "// First occurrence" 2>&1 | grep -q "MULTIPLE_MATCHES"; then
+if $BIN read --file "demo_multi.rs" --anchor "// First occurrence" 2>&1 | grep -q "MULTIPLE_MATCHES"; then
     echo "Read failed with MULTIPLE_MATCHES (expected)"
 else
     echo "Read failed (expected MULTIPLE_MATCHES)"
@@ -217,16 +217,16 @@ fi
 
 echo ""
 echo "Cleaning up..."
-rm -f "examples/demo_multi.rs"
+rm -f "demo_multi.rs"
 echo ""
 
 # Step 14: Demonstrate AMBIGUOUS_REPLACEMENT
 echo "=== Step 14: Demonstrate AMBIGUOUS_REPLACEMENT ==="
 echo "Creating test file..."
-echo "fn demo() { }" > "examples/demo_ambig.rs"
+echo "fn demo() { }" > "demo_ambig.rs"
 
 echo "Trying to use both --replacement and --from-replacement..."
-if $BIN write --file "examples/demo_ambig.rs" --anchor "fn demo() {" --replacement "new" --from-replacement 2>&1 | grep -qE "(cannot be used with|AMBIGUOUS)"; then
+if $BIN write --file "demo_ambig.rs" --anchor "fn demo() {" --replacement "new" --from-replacement 2>&1 | grep -qE "(cannot be used with|AMBIGUOUS)"; then
     echo "Write failed (expected AMBIGUOUS_REPLACEMENT)"
 else
     echo "Write failed (expected AMBIGUOUS_REPLACEMENT)"
@@ -234,16 +234,16 @@ fi
 
 echo ""
 echo "Cleaning up..."
-rm -f "examples/demo_ambig.rs"
+rm -f "demo_ambig.rs"
 echo ""
 
 # Step 15: Demonstrate NO_REPLACEMENT
 echo "=== Step 15: Demonstrate NO_REPLACEMENT ==="
 echo "Creating test file..."
-echo "fn demo() { }" > "examples/demo_norep.rs"
+echo "fn demo() { }" > "demo_norep.rs"
 
 echo "Trying to write without specifying replacement..."
-if $BIN write --file "examples/demo_norep.rs" --anchor "fn demo() {" --from-replacement 2>&1 | grep -q "NO_REPLACEMENT"; then
+if $BIN write --file "demo_norep.rs" --anchor "fn demo() {" --from-replacement 2>&1 | grep -q "NO_REPLACEMENT"; then
     echo "Write failed with NO_REPLACEMENT (expected)"
 else
     echo "Write failed (expected NO_REPLACEMENT)"
@@ -251,7 +251,7 @@ fi
 
 echo ""
 echo "Cleaning up..."
-rm -f "examples/demo_norep.rs"
+rm -f "demo_norep.rs"
 echo ""
 
 echo "=== Demo Complete ==="

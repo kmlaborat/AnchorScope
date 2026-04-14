@@ -4,12 +4,19 @@
 
 ---
 
+## 📚 Documentation
+
+- **[pi-anchorscope Tutorial](docs/tutorials/pi-anchorscope-tutorial.md)** - Complete guide to using pi-anchorscope skills
+- **[AnchorScope v1.3.0 Showcase](examples/v1_3_0_showcase.sh)** - Live demo of all features
+
+---
+
 ## 🚀 Quick Start / Demo
 
 See AnchorScope v1.3.0 in action with the built-in showcase:
 
 ```bash
-bash examples/v1_3_0_showcase.sh
+cd examples && bash v1_3_0_showcase.sh
 ```
 
 This script demonstrates:
@@ -22,8 +29,8 @@ This script demonstrates:
 Previous showcases are also available:
 
 ```bash
-bash examples/v1_1_0_showcase.sh   # Auto-labeling & label management
-bash examples/v1_2_0_showcase.sh   # Multi-level anchoring & True IDs
+cd examples && bash v1_1_0_showcase.sh   # Auto-labeling & label management
+cd examples && bash v1_2_0_showcase.sh   # Multi-level anchoring & True IDs
 ```
 
 ---
@@ -125,20 +132,19 @@ Exit 0 on success, 1 on any error.
 ### Tree: Visualize Buffer Structure
 
 ```bash
-anchorscope tree
-# or filter by file
 anchorscope tree --file <path>
 ```
 
 Displays the current Anchor Buffer structure. Shows True IDs, aliases (if any), and presence of `replacement` files.
 
+**Note:** The `--file` argument is required. There is no command to show all buffers at once.
+
 Example output:
 
 ```
-c4f8a1b2d3e4f5a6  (/path/to/file.rs)
-└── c1d2e3f4a5b6c7d8  [calculate_area]
-    └── f1e2d3c4b5a69788
-        ├── replacement ✓
+099375c8a05dbedb  (\?\C:\path\to\file.rs)
+├── 445a9ef90dcde6a5  [calculate_area]
+└── 8db42edf7905d28f  [helper]
 ```
 
 ### Pipe: Bridge with External Tools
@@ -329,6 +335,45 @@ AnchorScope is built upon these excellent open-source libraries:
 - **[xxhash-rust](https://github.com/DoumanAsh/xxhash-rust)** (BSL-1.0) — High-performance XXH3 implementation.
 - **[clap](https://github.com/clap-rs/clap)** (MIT/Apache-2.0) — Flexible Command Line Argument Parser.
 - **[tempfile](https://github.com/Stebalien/tempfile)** (MIT/Apache-2.0) — Robust temporary file management for testing.
+
+---
+
+## Common Workflow
+
+For typical editing workflows, use the following sequence:
+
+```bash
+# 1. Read to get True ID and hash
+anchorscope read --file file.rs --anchor "fn main()"
+
+# 2. (Optional) Create label for easier reference
+anchorscope label --name "main" --true-id <true_id>
+
+# 3. Prepare replacement via pipe
+anchorscope pipe --label "main" --out | transform-tool | anchorscope pipe --label "main" --in
+
+# 4. Write with hash verification
+anchorscope write --label "main" --from-replacement
+```
+
+### When to Use
+
+- LLM-driven code editing where determinism is critical
+- Multi-step edits requiring state persistence
+- External tool integration with content transformation
+- Debugging buffer state with tree/paths commands
+- Multi-line anchor matching with exact byte preservation
+
+### Key Commands
+
+| Command | Purpose |
+|---------|---------|
+| `read` | Locate and hash an anchored scope |
+| `write` | Replace scope with hash verification |
+| `label` | Assign human-readable alias to True ID |
+| `tree` | Visualize buffer structure |
+| `pipe` | Bridge with external tools |
+| `paths` | Get buffer file paths for debugging |
 
 ---
 
