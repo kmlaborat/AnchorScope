@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.0.0] - 2026-xx-xx
+
+### Breaking Changes
+- Removed: Anchor Buffer, True ID, Alias, label/tree/pipe/paths commands
+- Removed: Line numbering from read output
+- Simplified: read returns scope_hash and content only
+- Simplified: write requires --anchor, --expected-hash, --replacement
+
+### Changed
+- Normalization (CRLF→LF) is now in-memory only; file bytes outside
+  the matched scope are never modified
+- Stateless design: no state held between operations
+
+### Added
+- --replacement-file option for write command
+
 ## [Unreleased]
 
 ### Documentation

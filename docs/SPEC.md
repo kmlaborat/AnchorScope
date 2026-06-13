@@ -1,4 +1,4 @@
-# AnchorScope Specification v1.3.0
+# AnchorScope Specification v2.0.0
 
 ## Deterministic Scoped Editing Protocol
 
@@ -10,11 +10,15 @@ All operations are strictly **byte-level, deterministic, and single-location**.
 The key words "MUST", "MUST NOT", "SHOULD", and "MAY" in this document are to
 be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
 
-AnchorScope v1.3.0 extends v1.2.0 by introducing:
+AnchorScope v2.0.0 is a simplification of v1.x. It removes:
 
-* **Anchored Scope**: renamed from "region" for clarity and consistency with the tool name
-* **External Tool Pipeline**: `pipe` and `paths` commands enabling integration with external tools
-* **Replacement Buffer**: `replacement` file in the Anchor Buffer for pipeline workflows
+* **Anchor Buffer** — no temporary copies; every operation reads from the source file directly
+* **True ID** — no multi-level anchor identity; scope_hash is sufficient
+* **Alias / label** — no human-readable name management
+* **pipe / paths** — no external tool pipeline commands
+* **Line numbering** — no line-based output
+
+The result is a minimal, stateless protocol: `read` and `write`.
 
 ---
 
@@ -27,8 +31,8 @@ Even minor contextual changes can invalidate patches.
 
 ### 1.2 Solution: Anchor and Scope
 
-AnchorScope defines a precise **editing scope** using an exact byte sequence ("Anchor"),
-combined with **hash-based state verification**.
+AnchorScope defines a precise **editing scope** using an exact byte sequence
+("Anchor"), combined with **hash-based state verification**.
 
 This enables edits that are:
 
@@ -36,48 +40,37 @@ This enables edits that are:
 * Precise (single-location)
 * Idempotent (state-verified)
 
-### 1.3 Multi-Level Anchoring
+### 1.3 Stateless Design
 
-Uniqueness of an anchor is required within its source scope.
-When a target anchored scope is large, uniqueness is harder to achieve.
+AnchorScope v2.0.0 holds no state between operations.
 
-Multi-level anchoring solves this:
+Every `read` operates directly on the source file.
+Every `write` re-reads and re-verifies the source file before applying changes.
+No temporary files, no buffers, no identity tracking.
 
-1. Set a broad outer anchor (easy to make unique in the full file)
-2. Set an inner anchor within the outer anchor's copy (easy to make unique in the smaller scope)
-3. Edit the innermost target
+The agent is responsible for:
 
-Each level operates on a **buffer copy** of the parent's matched anchored scope,
-not on the original file. This prevents a write at any level from invalidating
-anchors at other levels.
+* Choosing the anchor string
+* Retaining the `scope_hash` between `read` and `write`
+* Constructing the replacement content
 
-After a child `write` succeeds, the parent buffer's `content` is **not** automatically
-updated. It reflects the state at the time of the parent's `read`. Any subsequent
-operation on the parent buffer **MUST** treat it as stale and re-read from the
-original file if an up-to-date view is required.
+### 1.4 Scope Localization
 
-### 1.4 External Tool Pipeline
+AnchorScope does not prescribe how an agent locates a target scope within a
+file. One effective strategy is **Sliding Bisection** (defined separately in
+AnchorEdit), which narrows a target region through repeated 3-choice selections
+without semantic analysis.
 
-AnchorScope is designed to integrate with external tools (e.g., translation engines,
-fast-apply models) via the `pipe` and `paths` commands.
-
-The boundary is explicit:
-
-* **Inside AnchorScope**: strict byte-level management, normalization, hash verification
-* **Outside AnchorScope**: external tools operate freely on content passed to them
-* **Re-entry**: content returned from external tools is immediately subject to
-  AnchorScope's validation and normalization pipeline
-
-AnchorScope does not prescribe what external tools do. It only guarantees the
-integrity of content before and after the boundary.
+AnchorScope operates after localization is complete: once the agent has chosen
+an anchor string, `read` confirms the match and `write` applies the change.
 
 ### 1.5 Layered Model
 
-| Layer              | Name            | Role                                                              |
-| :----------------- | :-------------- | :---------------------------------------------------------------- |
-| **Concept**        | Scoped Editing  | Philosophy of local, verifiable mutation                          |
-| **Protocol**       | Scope Anchoring | Deterministic matching & hashing rules                            |
-| **Implementation** | AnchorScope     | Reference CLI (`read` / `write` / `label` / `tree` / `pipe` / `paths`) |
+| Layer              | Name            | Role                                     |
+| :----------------- | :-------------- | :--------------------------------------- |
+| **Concept**        | Scoped Editing  | Philosophy of local, verifiable mutation |
+| **Protocol**       | Scope Anchoring | Deterministic matching & hashing rules   |
+| **Implementation** | AnchorScope     | Reference CLI (`read` / `write`)         |
 
 ---
 
@@ -92,8 +85,6 @@ The following invariants **MUST** hold:
 3. Exactly one match **MUST** exist to proceed.
 4. All operations **MUST** be deterministic.
 5. No implicit interpretation (syntax, encoding heuristics) is allowed.
-6. Multi-level anchors **MUST NOT** operate directly on the original file after the first level.
-   Subsequent levels operate on **buffer copies** only.
 
 ---
 
@@ -104,8 +95,6 @@ All inputs **MUST** be valid UTF-8.
 * File content **MUST** be validated immediately after reading.
 * `--anchor-file` content **MUST** be validated.
 * Inline arguments (`--anchor`, `--replacement`) are assumed valid.
-* Content received from external tools via `pipe` **MUST** be validated before
-  being written to the replacement buffer.
 
 #### Error
 
@@ -129,17 +118,20 @@ IO_ERROR: invalid UTF-8
 CRLF (\r\n) → LF (\n)
 ```
 
-Normalization **MUST** be applied:
+Normalization is an **in-memory operation** applied solely for matching and
+hashing. It **MUST NOT** affect the bytes written to the file.
+
+Normalization **MUST** be applied in memory:
 
 * After validation (before matching)
 * Before hashing
-* Before writing
-* Before storing content received from external tools into the replacement buffer
 
-Normalization applies identically to file content, anchor, and replacement.
+Normalization applies identically to file content and anchor string, enabling
+consistent comparison regardless of the line endings present in the file or
+the anchor argument.
 
-Normalization is **irreversible**: files written by AnchorScope are always LF-only,
-regardless of the original line endings. AnchorScope does not restore CRLF on output.
+The `replacement` content is written to the file **as-is**, without
+normalization. The agent is responsible for the byte content of the replacement.
 
 No other transformations are allowed:
 
@@ -187,177 +179,44 @@ No other notion of equality is permitted.
 
 ---
 
-### 2.7 Line Numbering
+## 3. Scope Hash (Normative)
 
-* 1-based
-* Based on normalized content (LF only)
-* Inclusive range `[start, end]`
-
----
-
-## 3. Anchor Identity (Normative)
-
-### 3.1 Scope Hash
-
-The **scope hash** is computed from the matched byte sequence of the anchored scope:
+The **scope hash** is computed from the matched byte sequence:
 
 ```
 scope_hash = xxh3_64(normalized matched bytes)
 ```
 
-This is the hash returned by `read` and used as `expected_hash` in `write`.
+This is the hash returned by `read` and used as `--expected-hash` in `write`.
+
+The scope hash serves as the sole state passed between `read` and `write`.
+The agent retains it; AnchorScope does not.
 
 ---
 
-### 3.2 True ID
+## 4. Execution Model (Normative)
 
-The **True ID** uniquely identifies an anchor within its parent scope.
-
-```
-true_id = xxh3_64(hex(parent_scope_hash) || 0x5F || hex(child_scope_hash))
-```
-
-where `||` denotes byte concatenation and `0x5F` is the ASCII code for `_`.
-
-For the first level (anchored directly into the original file):
+### 4.1 Read Pipeline
 
 ```
-true_id = xxh3_64(hex(file_hash) || 0x5F || hex(scope_hash))
-```
-
-where `file_hash = xxh3_64(normalized full file bytes)`.
-
-Properties:
-
-* Always 16 lowercase hex characters
-* Encodes both parent context and matched anchored scope
-* Two anchors with identical content but different parents have different True IDs
-* Determined solely by hash values; no file path or anchor string is included
-
-#### Duplicate True ID
-
-Although True ID collisions are statistically rare (xxh3_64 is 64-bit), they are
-theoretically possible. If the same True ID is found at multiple locations within
-the **same `{file_hash}` directory**, the system **MUST** terminate immediately with:
-
-```
-DUPLICATE_TRUE_ID
-```
-
-Detection scope is limited to the `{file_hash}` directory of the current operation.
-True IDs under different `{file_hash}` directories are independent and do not
-conflict with each other.
-
-This prevents non-deterministic behavior where operations might resolve to the
-wrong buffer location.
-
----
-
-### 3.3 Alias
-
-An **alias** is an optional human-readable name assigned to a True ID via the `label` command.
-
-* Multiple aliases may point to the same True ID
-* Aliases do not replace True IDs; they coexist
-* An alias is a convenience reference only; all protocol operations use True IDs
-
----
-
-## 4. Anchor Buffer (Normative)
-
-### 4.1 Purpose
-
-The **Anchor Buffer** is a structured temporary directory that stores:
-
-* A copy of the original file (root)
-* Copies of each matched anchored scope (one per `read`)
-* Replacement content prepared by external tools (one per `pipe`, if used)
-
-Buffer copies serve as the source for multi-level anchoring and external tool integration.
-They are **not** a snapshot or version history. They exist solely to enable
-recursive editing without modifying the original file.
-
----
-
-### 4.2 Directory Structure
-
-```
-{TMPDIR}/anchorscope/
-└── {file_hash}/
-    ├── content          ← normalized copy of the original file
-    ├── source_path      ← absolute path to the original file (plain text)
-    └── {true_id}/
-        ├── content      ← normalized copy of the matched anchored scope
-        ├── replacement  ← output from external tool (created by `pipe`, consumed by `write`)
-        └── {true_id}/
-            ├── content
-            ├── replacement
-            └── {true_id}/
-                ├── content
-                └── replacement
-
-{TMPDIR}/anchorscope/labels/
-└── {alias}.json         ← alias → true_id mapping
-```
-
-* `{TMPDIR}` is the OS temporary directory (`$TMPDIR` on Unix/macOS, `%TEMP%` on Windows)
-* `file_hash` identifies the root (original file)
-* `true_id` identifies each anchor level
-* `source_path` is stored **only at the root level**
-* `content` files contain normalized UTF-8 text
-* `replacement` files are created only when `pipe` is used; absent otherwise
-
-> **Note:** Deeply nested anchor structures may encounter platform-specific path
-> length limits (e.g., Windows MAX_PATH of 260 characters). Implementations
-> should document any such constraints.
-
----
-
-### 4.3 Lifecycle
-
-| Event | Effect on Buffer |
-| :---- | :--------------- |
-| `read` on original file | Creates `{file_hash}/content`, `{file_hash}/source_path`, `{file_hash}/{true_id}/content` |
-| `read` on buffer copy | Creates `{file_hash}/{true_id}/{true_id}/content` (nested) |
-| `pipe` (stdout mode) | Streams `content` to stdout; writes validated stdin to `replacement` |
-| `pipe` (file-io mode) | Passes `content` path to external tool; validates and stores output as `replacement` |
-| `write` success | Deletes the written anchor's True ID directory and all its descendants |
-| `write` failure | Buffer is retained for retry or inspection |
-| Process exit / error | Buffer is retained (OS temp cleanup handles eventual removal) |
-
----
-
-### 4.4 Labels File
-
-```json
-{ "true_id": "a1b2c3d4e5f6a7b8" }
-```
-
-* Stored at `{TMPDIR}/anchorscope/labels/{alias}.json`
-* Deleted when the referenced True ID's directory is deleted
-
----
-
-## 5. Execution Model (Normative)
-
-### 5.1 Read Pipeline
-
-```
-READ → VALIDATE → NORMALIZE → MATCH → HASH → BUFFER_WRITE
+READ → VALIDATE → NORMALIZE → MATCH → HASH
 ```
 
 * Any stage failure **MUST terminate immediately**
 * No stage may be skipped or reordered
+* The source file is **not modified**
 
 ---
 
-### 5.2 Write Phase
+### 4.2 Write Phase
 
 ```
-HASH_VERIFIED → WRITE → BUFFER_INVALIDATE → COMPLETE
+READ → VALIDATE → [NORMALIZE] → MATCH → HASH → VERIFY → WRITE → COMPLETE
 ```
 
-* Compare current content hash with `expected_hash`
+* Re-reads and re-validates the source file from scratch
+* Applies normalization **in memory** for matching and hash computation only
+* Compares computed hash with `--expected-hash`
 * If mismatch:
 
 ```
@@ -365,200 +224,112 @@ HASH_MISMATCH
 ```
 
 * WRITE **MUST**:
-  * Replace only the matched anchored scope
+  * Locate the matched byte range in the **original** (non-normalized) file
+  * Replace only that byte range with the replacement content
+  * Leave all bytes outside the matched range unchanged
   * Succeed or terminate with:
 
 ```
 IO_ERROR: write failure
 ```
 
-* On success, delete the anchor's buffer directory and all descendants
+`[NORMALIZE]` denotes an in-memory step that does not modify the file.
+
+> **Note:** When the source file contains CRLF sequences, the byte offsets
+> obtained from matching against the normalized (LF-only) content **MUST** be
+> mapped back to the corresponding offsets in the original file before writing.
+> Implementations that ignore this mapping will write to incorrect byte ranges.
 
 ---
 
-### 5.3 Pipe Phase
+## 5. Implementation: AnchorScope CLI (Normative)
 
-```
-BUFFER_READ → [EXTERNAL TOOL] → VALIDATE → NORMALIZE → REPLACEMENT_WRITE
-```
+### 5.1 Commands
 
-* `BUFFER_READ`: read `content` from buffer
-* `[EXTERNAL TOOL]`: AnchorScope yields control; external tool operates freely
-* `VALIDATE`: content returned from external tool **MUST** be validated as UTF-8
-* `NORMALIZE`: CRLF normalization applied
-* `REPLACEMENT_WRITE`: validated, normalized content written to `replacement`
-
-Any failure at VALIDATE or NORMALIZE **MUST terminate immediately**.
-The external tool's behavior between BUFFER_READ and VALIDATE is outside
-AnchorScope's scope.
+* `read` — match anchor, compute and return scope hash and matched content
+* `write` — verify hash, apply replacement
 
 ---
 
-## 6. Implementation: AnchorScope CLI (Normative)
-
-### 6.1 Commands
-
-* `read` – match anchor, compute scope hash and True ID, write buffer copy
-* `write` – verify hash, apply replacement, invalidate buffer
-* `label` – assign alias to a True ID
-* `tree` – display current buffer structure
-* `pipe` – bridge between Anchor Buffer and external tools via stdout/stdin
-* `paths` – return file paths of `content` and `replacement` for a given True ID
-
----
-
-### 6.2 Read Contract
+### 5.2 Read Contract
 
 The `read` command **MUST**:
 
-1. Execute the full pipeline through BUFFER_WRITE
+1. Execute the full read pipeline through HASH
 2. Return:
-   * Line range (1-based, inclusive)
-   * Scope hash
-   * True ID
-   * Matched content (normalized UTF-8)
-3. **NOT** modify the source file or any parent buffer
+   * `scope_hash`: 16-character lowercase hex string
+   * `content`: matched bytes as normalized UTF-8
+3. **NOT** modify the source file
 
-Target of `read` is either:
+```bash
+as read --file <path> --anchor "<string>"
+# or
+as read --file <path> --anchor-file <path>
+```
 
-* The original file (level 1)
-* A buffer `content` file referenced by True ID or alias (level 2+)
+Output (exit 0 on success):
+
+```
+scope_hash=<16-char hex>
+content=<matched bytes as UTF-8>
+```
 
 ---
 
-### 6.3 Write Contract
+### 5.3 Write Contract
 
 The `write` command **MUST**:
 
-1. Compute hash from current content of the target (file or buffer)
-2. Compare with `expected_hash`
-3. Perform replacement **only if equal**
-4. On success, delete the anchor's buffer directory and all descendants
-5. Otherwise return `HASH_MISMATCH`
-
-#### Replacement Source
-
-The replacement content **MUST** be specified explicitly. Two mutually exclusive options:
-
-* `--replacement "..."`: use the inline string as replacement content
-* `--from-replacement`: use `buffer/{true_id}/replacement` as replacement content
-
-If both are specified:
-
-```
-AMBIGUOUS_REPLACEMENT
-```
-
-If neither is specified:
-
-```
-NO_REPLACEMENT
-```
-
-The `replacement` file in the buffer is **never used implicitly**. Its existence
-alone has no effect on `write` behavior.
-
----
-
-### 6.4 Label Contract
-
-The `label` command **MUST**:
-
-* Accept a True ID and a human-readable alias
-* Create `labels/{alias}.json` mapping alias to True ID
-* Verify the True ID exists in the buffer before creating the alias
-* Allow multiple aliases per True ID
-* Reject alias reuse pointing to a different True ID:
-
-```
-LABEL_EXISTS
-```
-
----
-
-### 6.5 Tree Contract
-
-The `tree` command **MUST**:
-
-* Display the current buffer structure rooted at `{file_hash}`
-* Show True IDs, aliases (if any), and nesting depth
-* Indicate presence of `replacement` file where applicable
-* Reflect the actual state of the buffer directory
-
-Example output:
-
-```
-{file_hash}  (/path/to/original.rs)
-└── {true_id}  [my_function]
-    ├── replacement ✓
-    └── {true_id}
-        └── {true_id}  [inner_loop]
-```
-
----
-
-### 6.6 Pipe Contract
-
-The `pipe` command bridges the Anchor Buffer and external tools.
-
-It operates in two modes:
-
-#### stdout mode (default)
+1. Re-read and re-validate the source file
+2. Match the anchor
+3. Compute hash of matched scope
+4. Compare with `--expected-hash`
+5. Perform replacement **only if equal**
+6. Otherwise return `HASH_MISMATCH`
 
 ```bash
-as.pipe --true-id {true_id} --out | external-tool | as.pipe --true-id {true_id} --in
+as write \
+  --file <path> \
+  --anchor "<string>" \
+  --expected-hash <scope_hash> \
+  --replacement "<string>"
+# or with anchor/replacement files
+as write \
+  --file <path> \
+  --anchor-file <path> \
+  --expected-hash <scope_hash> \
+  --replacement-file <path>
 ```
 
-* `--out`: streams `buffer/{true_id}/content` to stdout
-* `--in`: reads from stdin, validates and normalizes, writes to `buffer/{true_id}/replacement`
+---
 
-`as.read` and `as.write` **MUST NOT** be used for stdout/stdin I/O directly.
-All standard I/O at the AnchorScope boundary **MUST** go through `pipe`.
-
-> **Note:** stdout mode delegates encoding handling to the external tool and the
-> OS pipe. For guaranteed byte-level integrity, `--file-io` mode is recommended.
-
-#### file-io mode
+### 5.4 Typical Workflow
 
 ```bash
-as.pipe --true-id {true_id} --tool external-tool --file-io
+# 1. Read: confirm match and obtain scope_hash
+as read --file src/main.rs --anchor "fn calculate_area"
+
+# Output:
+# scope_hash=3a7f1c2d4e5b6f8a
+# content=...
+
+# 2. Agent constructs replacement content
+
+# 3. Write: apply with hash verification
+as write \
+  --file src/main.rs \
+  --anchor "fn calculate_area" \
+  --expected-hash 3a7f1c2d4e5b6f8a \
+  --replacement "fn calculate_area..."
 ```
 
-* Passes `buffer/{true_id}/content` path to the external tool
-* External tool reads `content` and writes output to a path provided by `pipe`
-* `pipe` validates and normalizes the output, then stores it as `replacement`
-
-In file-io mode, `pipe` controls the file path passed to the external tool
-and **MUST** validate all content upon re-entry.
+The agent retains `scope_hash` between step 1 and step 3.
+If the file changes between steps, `write` returns `HASH_MISMATCH` and
+the agent re-runs `read` to obtain a fresh hash.
 
 ---
 
-### 6.7 Paths Contract
-
-The `paths` command **MUST**:
-
-* Accept a True ID or alias
-* Return the absolute paths of `content` and `replacement` for that True ID
-* Return `replacement` path regardless of whether the file currently exists
-
-Example output:
-
-```
-content:     /tmp/anchorscope/{file_hash}/{true_id}/content
-replacement: /tmp/anchorscope/{file_hash}/{true_id}/replacement
-```
-
-This enables external tools or agents to access buffer files directly
-without going through `pipe`.
-
-If an external tool writes directly to the `replacement` path obtained via `paths`,
-AnchorScope **MUST** validate and normalize the content of `replacement` at the
-time `write --from-replacement` is executed. The tool is responsible for writing
-valid UTF-8; AnchorScope will reject invalid content with `IO_ERROR: invalid UTF-8`.
-
----
-
-### 6.8 Deterministic Error Handling
+### 5.5 Deterministic Error Handling
 
 Allowed outputs:
 
@@ -566,10 +337,6 @@ Allowed outputs:
 NO_MATCH
 MULTIPLE_MATCHES
 HASH_MISMATCH
-DUPLICATE_TRUE_ID
-LABEL_EXISTS
-AMBIGUOUS_REPLACEMENT
-NO_REPLACEMENT
 IO_ERROR: file not found
 IO_ERROR: permission denied
 IO_ERROR: invalid UTF-8
@@ -579,7 +346,7 @@ IO_ERROR: write failure
 
 ---
 
-## 7. Non-Goals
+## 6. Non-Goals
 
 * Snapshot or version history (that is git's responsibility)
 * Multi-file operations
@@ -587,43 +354,35 @@ IO_ERROR: write failure
 * Regex or fuzzy matching
 * Encoding detection or conversion
 * Any modification outside the matched anchored scope
-* Prescribing the behavior of external tools
-* Sequential chaining of multiple read/write operations (that is the external tool or agent's responsibility)
-* Concurrent execution safety (AnchorScope is designed for single-process use; concurrent access to the same buffer is undefined behavior)
+* Scope localization (that is the agent's or AnchorEdit's responsibility)
+* External tool pipeline management
+* Concurrent execution safety (AnchorScope is designed for single-process use)
 
 ---
 
-## 8. Guarantees
+## 7. Guarantees
 
 1. Every edit targets exactly one uniquely identified anchored scope
-2. No edit is applied if the content state has changed
+2. No edit is applied if the file state has changed since `read`
 3. All operations are deterministic and reproducible
 4. Equality is strictly defined at the byte level
-5. True IDs are derived solely from hash values; no path or string metadata is included
-6. Buffer copies isolate levels; a write at any level does not invalidate unrelated anchors
-7. The system is fail-fast by design
-8. Zero modification occurs outside the matched anchored scope
-9. Normalization is irreversible; all output files are LF-only
-10. Duplicate True IDs within the same file_hash directory trigger immediate failure
-11. Content re-entering AnchorScope from external tools is always validated and normalized
-12. Replacement source for `write` is always explicit; `replacement` file is never used implicitly
+5. No state is held between operations; the agent retains `scope_hash`
+6. The system is fail-fast by design
+7. Zero modification occurs outside the matched anchored scope
+8. Normalization is in-memory only; file bytes outside the matched scope are never modified
 
 ---
 
-## 9. Summary
+## 8. Summary
 
-AnchorScope v1.3.0 defines **atomic, deterministic, multi-level file editing
-with external tool integration**:
+AnchorScope v2.0.0 defines a **minimal, stateless, deterministic editing protocol**:
 
-* Hash-verified consistency at every level
-* True IDs derived from `xxh3_64(hex(parent_scope_hash) || 0x5F || hex(child_scope_hash))`
-* Optional human-readable aliases via `label`
-* A structured Anchor Buffer with `content` and `replacement` per anchored scope
-* `pipe` command for stdout/stdin integration with external tools
-* `paths` command for direct buffer file access
-* Strict validation and normalization on all content re-entering AnchorScope
-* No snapshot, no mutable state, no version history
+* Two commands: `read` and `write`
+* One state token: `scope_hash`, retained by the agent
+* No buffers, no identity tracking, no pipelines
+* Hash-verified safety on every write
+* Fail-fast on ambiguity or state change
 
 > **Correctness over convenience
-> Determinism over mutability
+> Stateless over stateful
 > Hash as the sole source of truth**

@@ -1,0 +1,188 @@
+mod buffer_path;
+mod cli;
+mod commands;
+mod config;
+mod error;
+mod hash;
+mod matcher;
+mod security;
+mod storage;
+
+use crate::error::AnchorScopeError;
+use clap::Parser;
+use cli::{Cli, Command};
+use matcher::normalize_line_endings;
+use std::fs;
+use std::process;
+
+pub fn map_io_error_read(e: std::io::Error) -> String {
+    AnchorScopeError::from(e).to_spec_string()
+}
+
+pub fn map_io_error_write(e: std::io::Error) -> String {
+    crate::error::from_io_error_write(e).to_spec_string()
+}
+
+pub fn validate_utf8(bytes: &[u8]) -> Result<(), String> {
+    if std::str::from_utf8(bytes).is_err() {
+        Err("IO_ERROR: invalid UTF-8".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn main() {
+    let cli = Cli::parse();
+
+    let exit_code = match cli.command {
+        Command::Read {
+            file,
+            anchor,
+            anchor_file,
+            label,
+            true_id,
+        } => commands::read::execute(
+            file.as_deref(),
+            anchor.as_deref(),
+            anchor_file.as_deref(),
+            label.as_deref(),
+            true_id.as_deref(),
+        ),
+        Command::Write {
+            file,
+            anchor,
+            anchor_file,
+            expected_hash,
+            label,
+            true_id,
+            replacement,
+            from_replacement,
+        } => commands::write::execute(
+            file.as_deref(),
+            anchor.as_deref(),
+            anchor_file.as_deref(),
+            expected_hash.as_deref(),
+            label.as_deref(),
+            true_id.as_deref(),
+            &replacement,
+            from_replacement,
+        ),
+        Command::Label { name, true_id } => commands::label::execute(&name, &true_id),
+        Command::Tree { file } => commands::tree::execute(&file),
+        Command::Pipe {
+            label,
+            true_id,
+            out,
+            r#in,
+            file_io,
+            tool,
+            tool_args,
+        } => commands::pipe::execute(
+            &label,
+            true_id.as_deref(),
+            out,
+            r#in,
+            file_io,
+            tool.as_deref(),
+            tool_args.as_deref(),
+        ),
+        Command::Paths { label, true_id } => commands::paths::execute(&label, true_id.as_deref()),
+    };
+
+    process::exit(exit_code);
+}
+
+/// Load and validate anchor from either inline or file source.
+/// Returns normalized anchor bytes (Vec<u8>) or error string.
+pub fn load_anchor(anchor: Option<&str>, anchor_file: Option<&str>) -> Result<Vec<u8>, String> {
+    match (anchor, anchor_file) {
+        (None, None) => {
+            return Err("ERROR: either --anchor or --anchor-file must be provided".to_string())
+        }
+        (Some(_), Some(_)) => return Err("IO_ERROR: mutually exclusive options".to_string()),
+        _ => {}
+    }
+
+    let anchor_bytes = match anchor {
+        Some(a) => {
+            if a.is_empty() {
+                return Err("NO_MATCH".to_string());
+            }
+            normalize_line_endings(a.as_bytes())
+        }
+        None => {
+            let path = anchor_file.unwrap();
+            let content = fs::read(path).map_err(|e| map_io_error_read(e))?;
+            // Validate UTF-8
+            if std::str::from_utf8(&content).is_err() {
+                return Err("IO_ERROR: invalid UTF-8".to_string());
+            }
+            let s = String::from_utf8(content).unwrap(); // safe after check
+            if s.is_empty() {
+                return Err("NO_MATCH".to_string());
+            }
+            normalize_line_endings(s.as_bytes())
+        }
+    };
+
+    Ok(anchor_bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_map_io_error_read() {
+        // Test NotFound
+        let e = std::io::Error::from(std::io::ErrorKind::NotFound);
+        assert_eq!(map_io_error_read(e), "IO_ERROR: file not found");
+
+        // Test PermissionDenied
+        let e = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        assert_eq!(map_io_error_read(e), "IO_ERROR: permission denied");
+
+        // Test other errors (Interrupted, Unexpected, etc.)
+        let e = std::io::Error::from(std::io::ErrorKind::Interrupted);
+        assert_eq!(map_io_error_read(e), "IO_ERROR: read failure");
+
+        let e = std::io::Error::from(std::io::ErrorKind::Other);
+        assert_eq!(map_io_error_read(e), "IO_ERROR: read failure");
+    }
+
+    #[test]
+    fn test_map_io_error_write() {
+        // Test PermissionDenied
+        let e = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        assert_eq!(map_io_error_write(e), "IO_ERROR: permission denied");
+
+        // Test NotFound (maps to WriteFailure for write operations)
+        let e = std::io::Error::from(std::io::ErrorKind::NotFound);
+        assert_eq!(map_io_error_write(e), "IO_ERROR: write failure");
+
+        // Test other errors (Interrupted, Other, etc.)
+        let e = std::io::Error::from(std::io::ErrorKind::Interrupted);
+        assert_eq!(map_io_error_write(e), "IO_ERROR: write failure");
+
+        let e = std::io::Error::from(std::io::ErrorKind::Other);
+        assert_eq!(map_io_error_write(e), "IO_ERROR: write failure");
+    }
+
+    #[test]
+    fn test_validate_utf8_valid() {
+        assert!(validate_utf8(b"hello").is_ok());
+        assert!(validate_utf8(b"\xC3\xA9").is_ok()); // valid UTF-8: é
+    }
+
+    #[test]
+    fn test_validate_utf8_invalid() {
+        assert_eq!(
+            validate_utf8(&[0xFF, 0xFE]),
+            Err("IO_ERROR: invalid UTF-8".to_string())
+        );
+        assert_eq!(
+            validate_utf8(b"\x80\x81\x82"),
+            Err("IO_ERROR: invalid UTF-8".to_string())
+        );
+    }
+}
