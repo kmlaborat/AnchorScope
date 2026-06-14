@@ -262,9 +262,9 @@ The `read` command **MUST**:
 3. **NOT** modify the source file
 
 ```bash
-as read --file <path> --anchor "<string>"
+anchorscope read --file <path> --anchor "<string>"
 # or
-as read --file <path> --anchor-file <path>
+anchorscope read --file <path> --anchor-file <path>
 ```
 
 Output (exit 0 on success):
@@ -288,13 +288,13 @@ The `write` command **MUST**:
 6. Otherwise return `HASH_MISMATCH`
 
 ```bash
-as write \
+anchorscope write \
   --file <path> \
   --anchor "<string>" \
   --expected-hash <scope_hash> \
   --replacement "<string>"
 # or with anchor/replacement files
-as write \
+anchorscope write \
   --file <path> \
   --anchor-file <path> \
   --expected-hash <scope_hash> \
@@ -307,7 +307,7 @@ as write \
 
 ```bash
 # 1. Read: confirm match and obtain scope_hash
-as read --file src/main.rs --anchor "fn calculate_area"
+anchorscope read --file src/main.rs --anchor "fn calculate_area"
 
 # Output:
 # scope_hash=3a7f1c2d4e5b6f8a
@@ -316,7 +316,7 @@ as read --file src/main.rs --anchor "fn calculate_area"
 # 2. Agent constructs replacement content
 
 # 3. Write: apply with hash verification
-as write \
+anchorscope write \
   --file src/main.rs \
   --anchor "fn calculate_area" \
   --expected-hash 3a7f1c2d4e5b6f8a \

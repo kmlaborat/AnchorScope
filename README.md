@@ -28,14 +28,14 @@ AnchorScope operates in a simple two-step cycle: `read` to locate and hash a sco
 
 ```bash
 # 1. Read — locate the anchor and obtain scope_hash
-as read --file src/main.rs --anchor "fn calculate_area"
+anchorscope read --file src/main.rs --anchor "fn calculate_area"
 
 # Output:
 # scope_hash=3a7f1c2d4e5b6f8a
 # content=fn calculate_area(...)
 
 # 2. Write — replace the scope with hash verification
-as write \
+anchorscope write \
   --file src/main.rs \
   --anchor "fn calculate_area" \
   --expected-hash 3a7f1c2d4e5b6f8a \
@@ -53,9 +53,9 @@ The agent is responsible for retaining `scope_hash` between `read` and `write`. 
 Match an anchor, compute and return `scope_hash` and matched content.
 
 ```bash
-as read --file <path> --anchor "<string>"
+anchorscope read --file <path> --anchor "<string>"
 # or
-as read --file <path> --anchor-file <path>
+anchorscope read --file <path> --anchor-file <path>
 ```
 
 | Option | Description |
@@ -80,13 +80,13 @@ The source file is never modified.
 Verify the hash and apply a replacement.
 
 ```bash
-as write \
+anchorscope write \
   --file <path> \
   --anchor "<string>" \
   --expected-hash <hex> \
   --replacement "<string>"
 # or with files
-as write \
+anchorscope write \
   --file <path> \
   --anchor-file <path> \
   --expected-hash <hex> \
@@ -143,7 +143,7 @@ AnchorScope returns a specific error string for each failure mode. Errors are pr
 Pass the anchor as a command-line string. Requires proper shell escaping for newlines and special characters:
 
 ```bash
-as read --file src.rs --anchor $'fn main() {\n\tprintln!("Hello");\n}'
+anchorscope read --file src.rs --anchor $'fn main() {\n\tprintln!("Hello");\n}'
 ```
 
 Inline arguments are assumed to be valid UTF-8 by the CLI layer.
@@ -158,7 +158,7 @@ fn main() {
     println!("Hello");
 }
 EOF
-as read --file src.rs --anchor-file anchor.txt
+anchorscope read --file src.rs --anchor-file anchor.txt
 ```
 
 **File-based anchors are recommended for multi-line anchors and agent-generated workflows.**
