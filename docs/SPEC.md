@@ -324,8 +324,15 @@ as write \
 ```
 
 The agent retains `scope_hash` between step 1 and step 3.
-If the file changes between steps, `write` returns `HASH_MISMATCH` and
-the agent re-runs `read` to obtain a fresh hash.
+
+The protection guarantee is scoped to the anchor:
+
+* If the anchored byte sequence changes between steps, `write` returns `NO_MATCH`.
+* If an incorrect `--expected-hash` is provided, `write` returns `HASH_MISMATCH`.
+* Changes outside the anchored byte sequence do not affect the outcome.
+
+The breadth of protection is determined by the anchor length chosen by the agent.
+A longer anchor protects a larger byte range; a shorter anchor protects less.
 
 ---
 
@@ -363,7 +370,7 @@ IO_ERROR: write failure
 ## 7. Guarantees
 
 1. Every edit targets exactly one uniquely identified anchored scope
-2. No edit is applied if the file state has changed since `read`
+2. No edit is applied if the anchored scope has changed since `read`
 3. All operations are deterministic and reproducible
 4. Equality is strictly defined at the byte level
 5. No state is held between operations; the agent retains `scope_hash`
