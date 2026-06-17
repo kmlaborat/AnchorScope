@@ -3,6 +3,10 @@ name = "anchorscope"
 version = "2.0.0"
 edition = "2021"
 
+[lib]
+name = "anchorscope"
+path = "src/lib.rs"
+
 [[bin]]
 name = "anchorscope"
 path = "src/main.rs"

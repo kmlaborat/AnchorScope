@@ -1,8 +1,5 @@
 mod cli;
 mod commands;
-mod error;
-mod hash;
-mod matcher;
 
 use cli::{Cli, Command};
 use clap::Parser;

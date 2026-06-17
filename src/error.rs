@@ -1,4 +1,5 @@
 /// SPEC-compliant error output string for hash mismatch.
+#[allow(dead_code)]
 pub fn hash_mismatch() -> &'static str {
     "HASH_MISMATCH"
 }
